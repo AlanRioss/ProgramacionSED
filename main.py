@@ -522,6 +522,8 @@ if archivo_antes and archivo_ahora:
                 df_comparativo["Monto Anual (Ahora)"] - df_comparativo["Monto Anual (Antes)"]
             )
 
+            df_comparativo["Partida"] = df_comparativo["Partida"].apply(lambda x: str(int(float(x)))[:4])
+            
             # --- Estilizado para resaltar diferencias distintas de cero ---
             df_comparativo_styler = df_comparativo.copy()
             
