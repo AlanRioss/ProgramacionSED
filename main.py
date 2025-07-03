@@ -522,12 +522,36 @@ if archivo_antes and archivo_ahora:
                 df_comparativo["Monto Anual (Ahora)"] - df_comparativo["Monto Anual (Antes)"]
             )
 
-            # Formato de moneda
-            for col in ["Monto Anual (Antes)", "Monto Anual (Ahora)", "Diferencia"]:
-                df_comparativo[col] = df_comparativo[col].apply(lambda x: f"${x:,.2f}")
-
+            # --- Estilizado para resaltar diferencias distintas de cero ---
+            df_comparativo_styler = df_comparativo.copy()
+            
+            # Asegúrate de que la columna "Diferencia" sea numérica antes de formatear
+            df_comparativo_styler["Diferencia"] = (
+                df_partidas_ahora_qm.groupby("Partida")["Monto Anual"].sum()
+                .reindex(df_comparativo["Partida"]).fillna(0).values
+                -
+                df_partidas_antes_qm.groupby("Partida")["Monto Anual"].sum()
+                .reindex(df_comparativo["Partida"]).fillna(0).values
+            )
+            
+            # Función de estilo para resaltar diferencias
+            def resaltar_diferencias(val):
+                if val != 0:
+                    return "background-color: #fff3cd"  # amarillo suave
+                return ""
+            
+            styled_df = df_comparativo_styler.style.applymap(resaltar_diferencias, subset=["Diferencia"])
+            
+            # Aplica formato de moneda
+            styled_df = styled_df.format({
+                "Monto Anual (Antes)": "${:,.2f}",
+                "Monto Anual (Ahora)": "${:,.2f}",
+                "Diferencia": "${:,.2f}"
+            })
+            
             st.markdown("##### Comparativo de Montos por Partida")
-            st.dataframe(df_comparativo, use_container_width=True)
+            st.dataframe(styled_df, use_container_width=True)
+            
 
             # --- Distribución mensual por meta ---
             meses = [
