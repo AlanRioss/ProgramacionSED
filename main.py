@@ -4,6 +4,7 @@ import plotly.express as px
 import difflib
 import unicodedata
 
+
 st.set_page_config(layout="wide")
 st.title("Revisión Programación SED")
 
@@ -78,34 +79,41 @@ if archivo_antes and archivo_ahora:
             if col in datos_antes.columns:
                 datos_antes[col] = datos_antes[col].astype(str).apply(limpiar_texto)
 
-
-        # --- Filtros escalonados ---
         with st.sidebar:
             st.markdown("---")
             st.markdown("### 🔎 Filtrar proyectos")
 
-
+            # Ejes disponibles (siempre visible)
             ejes_disponibles = datos_ahora["Eje"].dropna().unique().tolist()
-            eje_sel = st.selectbox("Eje", [""] + sorted(ejes_disponibles))
+            eje_sel = st.selectbox("Eje", [""] + sorted(ejes_disponibles), key="filtro_eje")
 
+            # Dependencias disponibles (se filtran si hay eje, o se muestran todas si no)
             if eje_sel:
                 deps_filtradas = datos_ahora[datos_ahora["Eje"] == eje_sel]["Dep Siglas"].dropna().unique().tolist()
-                dep_sel = st.selectbox("Dependencia", [""] + sorted(deps_filtradas))
             else:
-                dep_sel = None
+                deps_filtradas = datos_ahora["Dep Siglas"].dropna().unique().tolist()
+            dep_sel = st.selectbox("Dependencia", [""] + sorted(deps_filtradas), key="filtro_dep")
 
-            if eje_sel and dep_sel:
-                subset = datos_ahora[
-                    (datos_ahora["Eje"] == eje_sel) & (datos_ahora["Dep Siglas"] == dep_sel)
-                ][["Clave Q", "Nombre del Proyecto (Ejercicio Actual)"]].dropna()
+            # Filtrado de proyectos con nombre visible (se adapta a los filtros previos o muestra todos)
+            filtro_q = datos_ahora.copy()
+            if eje_sel:
+                filtro_q = filtro_q[filtro_q["Eje"] == eje_sel]
+            if dep_sel:
+                filtro_q = filtro_q[filtro_q["Dep Siglas"] == dep_sel]
 
-                subset["display"] = subset["Clave Q"] + " - " + subset["Nombre del Proyecto (Ejercicio Actual)"]
-                opciones_q = subset.set_index("display")["Clave Q"].to_dict()
+            filtro_q = filtro_q[["Clave Q", "Nombre del Proyecto (Ejercicio Actual)"]].dropna()
+            filtro_q["display"] = filtro_q["Clave Q"] + " — " + filtro_q["Nombre del Proyecto (Ejercicio Actual)"]
+            filtro_q = filtro_q.sort_values("display")
 
-                clave_q_display = st.selectbox("Clave Q", [""] + list(opciones_q.keys()))
-                clave_q = opciones_q.get(clave_q_display)
-            else:
-             clave_q = None
+            opciones_q = dict(zip(filtro_q["display"], filtro_q["Clave Q"]))
+            clave_q_display = st.selectbox(
+                "Clave Q",
+                [""] + list(opciones_q.keys()),
+                placeholder="Buscar por Clave Q o nombre...",
+                key="filtro_q"
+            )
+            clave_q = opciones_q.get(clave_q_display)
+
 
 
         # --- Control de flujo: si no hay Clave Q seleccionada, detener ejecución ---
@@ -169,6 +177,7 @@ if archivo_antes and archivo_ahora:
 
     st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto[0]}")
 
+
     tabs = st.tabs([
         "📄 Datos Generales",
         "🎯 Metas",
@@ -199,6 +208,7 @@ if archivo_antes and archivo_ahora:
                 elif tag == "insert":
                     res_ahora += f"<span style='background-color:lightgreen'>{texto_ahora[j1:j2]}</span>"
             return res_antes, res_ahora
+
 
         if clave_q == "Todos":
             st.info("Selecciona una Clave Q específica en el panel lateral para ver los datos comparativos.")
@@ -238,7 +248,7 @@ if archivo_antes and archivo_ahora:
 
     with tabs[1]:  
         st.subheader("🎯 Metas")
-
+        
         # --------- Filtro de Clave de Meta (solo si hay datos y clave_q) ---------
         if not metas_ahora.empty and clave_q is not None:
             st.markdown("### Seleccionar Meta")
