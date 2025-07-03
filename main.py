@@ -414,7 +414,7 @@ if archivo_antes and archivo_ahora:
                     # Muestra la tabla estilizada
                     st.dataframe(styled_df, use_container_width=True)
 
-                    st.dataframe(resumen_comparativo, use_container_width=True)
+              
 
 
 ############################## SECCIÓN DE CRONOGRAMA ############################################################
