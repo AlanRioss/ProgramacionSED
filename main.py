@@ -560,9 +560,23 @@ if archivo_antes and archivo_ahora:
                 "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
             ]
 
-            # Sumar por mes
-            sum_mensual_ahora = df_partidas_ahora_qm[meses].sum()
-            sum_mensual_antes = df_partidas_antes_qm[meses].sum()
+            # --- Segmentador por Partida ---
+            partidas_disponibles = sorted(df_comparativo["Partida"].unique().tolist())
+            partidas_mostrar = ["Todas"] + partidas_disponibles
+
+            partida_seleccionada = st.radio("Selecciona una partida", partidas_mostrar, horizontal=True)
+
+            # --- Filtrado de datos según partida seleccionada ---
+            if partida_seleccionada == "Todas":
+                df_mes_ahora = df_partidas_ahora_qm
+                df_mes_antes = df_partidas_antes_qm
+            else:
+                df_mes_ahora = df_partidas_ahora_qm[df_partidas_ahora_qm["Partida"] == partida_seleccionada]
+                df_mes_antes = df_partidas_antes_qm[df_partidas_antes_qm["Partida"] == partida_seleccionada]
+
+            # --- Sumar por mes ---
+            sum_mensual_ahora = df_mes_ahora[meses].sum()
+            sum_mensual_antes = df_mes_antes[meses].sum()
 
             df_mensual = pd.DataFrame({
                 "Mes": [mes.replace("Monto ", "") for mes in meses],
