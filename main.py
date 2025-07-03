@@ -165,6 +165,9 @@ if archivo_antes and archivo_ahora:
         cumplimiento_antes = cumplimiento_antes.dropna(subset=["Clave de Meta"])
 
 # ========== PESTAÑAS PRINCIPALES ==========
+    nombre_proyecto = datos_ahora.loc[datos_ahora["Clave Q"] == clave_q, "Nombre del Proyecto (Ejercicio Actual)"].values
+
+    st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto[0]}")
 
     tabs = st.tabs([
         "📄 Datos Generales",
@@ -200,8 +203,6 @@ if archivo_antes and archivo_ahora:
         if clave_q == "Todos":
             st.info("Selecciona una Clave Q específica en el panel lateral para ver los datos comparativos.")
         else:
-            st.markdown(f"### Clave Q: {clave_q}")
-
             fila_antes = datos_antes
             fila_ahora = datos_ahora
 
