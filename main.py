@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import difflib
+import unicodedata
 
 st.set_page_config(layout="wide")
 st.title("Revisión Programación SED")
