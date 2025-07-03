@@ -385,8 +385,34 @@ if archivo_antes and archivo_ahora:
                         "Monto Total (Antes)", "Monto Total (Ahora)"
                     ]]
 
+                    def resaltar_diferencias_montos(fila):
+                        try:
+                            monto_antes = float(fila["Monto Total (Antes)"])
+                            monto_ahora = float(fila["Monto Total (Ahora)"])
+                            if monto_antes != monto_ahora:
+                                return ["background-color: #fff3cd"] * len(fila)  # color amarillo suave
+                        except:
+                            pass
+                        return [""] * len(fila)
+
+                    # 👉 Aplica el estilo antes de formatear los montos a texto
+                    resumen_comparativo_estilado = resumen_comparativo.copy()
                     for col in ["Monto Total (Antes)", "Monto Total (Ahora)"]:
-                        resumen_comparativo[col] = resumen_comparativo[col].apply(lambda x: f"${x:,.2f}")
+                        resumen_comparativo_estilado[col] = resumen_comparativo[col].replace('[\$,]', '', regex=True).astype(float)
+
+                    # Aplica el resaltado por fila
+                    styled_df = resumen_comparativo_estilado.style.apply(resaltar_diferencias_montos, axis=1)
+
+                    # Aplica formato a montos
+                    styled_df = styled_df.format({
+                        "Monto Total (Antes)": "${:,.2f}",
+                        "Monto Total (Ahora)": "${:,.2f}",
+                        "Cantidad Total (Antes)": "{:,.2f}",
+                        "Cantidad Total (Ahora)": "{:,.2f}"
+                    })
+
+                    # Muestra la tabla estilizada
+                    st.dataframe(styled_df, use_container_width=True)
 
                     st.dataframe(resumen_comparativo, use_container_width=True)
 
