@@ -49,6 +49,13 @@ with st.sidebar:
 if archivo_antes and archivo_ahora:
     with st.spinner("Cargando y procesando archivos..."):
 
+        def limpiar_texto(texto):
+            if isinstance(texto, str):
+                texto = unicodedata.normalize("NFKC", texto)  # Normaliza caracteres raros
+                texto = texto.replace('\n', ' ').replace('\r', ' ')  # Elimina saltos de línea
+                texto = texto.strip()  # Quita espacios al inicio y fin
+            return texto    
+        
         # --- Cargar hoja 'Datos Generales' para extraer Claves Q disponibles ---
         columnas_datos = [
             "Fecha", "Clave Q", "Nombre del Proyecto (Ejercicio Actual)", "Eje", "Dep Siglas",
@@ -57,6 +64,19 @@ if archivo_antes and archivo_ahora:
         ]
         datos_ahora = cargar_hoja(archivo_ahora, "Datos Generales", columnas_datos)
         datos_antes = cargar_hoja(archivo_antes, "Datos Generales", columnas_datos)
+
+        # --- Limpiar campos de texto ---
+        columnas_texto = [
+            "Diagnóstico", "Objetivo General", "Descripción del Proyecto",
+            "Descripción del Avance Actual", "Alcance Anual"
+        ]
+
+        for col in columnas_texto:
+            if col in datos_ahora.columns:
+                datos_ahora[col] = datos_ahora[col].astype(str).apply(limpiar_texto)
+            if col in datos_antes.columns:
+                datos_antes[col] = datos_antes[col].astype(str).apply(limpiar_texto)
+
 
         # --- Filtros escalonados ---
         with st.sidebar:
