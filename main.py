@@ -496,7 +496,7 @@ if archivo_antes and archivo_ahora:
     else: "Selecciona una Clave de Meta para ver las secciones de Cronograma, Partidas y Cumplimiento"           
 
 
-        ############################## SECCIÓN DE METAS-PARTIDAS ############################################################
+       ############################## SECCIÓN DE METAS-PARTIDAS ############################################################
 
     if clave_meta_filtro_valor:
         with subtabs[2]:
@@ -522,11 +522,13 @@ if archivo_antes and archivo_ahora:
                 df_comparativo["Monto Anual (Ahora)"] - df_comparativo["Monto Anual (Antes)"]
             )
 
+
             df_comparativo["Partida"] = df_comparativo["Partida"].apply(lambda x: str(int(float(x)))[:4])
+
             
             # --- Estilizado para resaltar diferencias distintas de cero ---
             df_comparativo_styler = df_comparativo.copy()
-            
+
             # Asegúrate de que la columna "Diferencia" sea numérica antes de formatear
             df_comparativo_styler["Diferencia"] = (
                 df_partidas_ahora_qm.groupby("Partida")["Monto Anual"].sum()
@@ -535,25 +537,26 @@ if archivo_antes and archivo_ahora:
                 df_partidas_antes_qm.groupby("Partida")["Monto Anual"].sum()
                 .reindex(df_comparativo["Partida"]).fillna(0).values
             )
-            
+
             # Función de estilo para resaltar diferencias
             def resaltar_diferencias(val):
                 if val != 0:
                     return "background-color: #fff3cd"  # amarillo suave
                 return ""
-            
+
             styled_df = df_comparativo_styler.style.applymap(resaltar_diferencias, subset=["Diferencia"])
-            
+
             # Aplica formato de moneda
             styled_df = styled_df.format({
                 "Monto Anual (Antes)": "${:,.2f}",
                 "Monto Anual (Ahora)": "${:,.2f}",
                 "Diferencia": "${:,.2f}"
             })
-            
+
+
             st.markdown("##### Comparativo de Montos por Partida")
             st.dataframe(styled_df, use_container_width=True)
-            
+
 
             # --- Distribución mensual por meta ---
             meses = [
@@ -568,7 +571,7 @@ if archivo_antes and archivo_ahora:
 
             partida_seleccionada = st.radio("Selecciona una partida", partidas_mostrar, horizontal=True)
 
-            # --- Filtrado de datos según partida seleccionada ---
+                        # --- Filtrado de datos según partida seleccionada ---
             if partida_seleccionada == "Todas":
                 df_mes_ahora = df_partidas_ahora_qm
                 df_mes_antes = df_partidas_antes_qm
@@ -579,6 +582,8 @@ if archivo_antes and archivo_ahora:
             # --- Sumar por mes ---
             sum_mensual_ahora = df_mes_ahora[meses].sum()
             sum_mensual_antes = df_mes_antes[meses].sum()
+
+
 
             df_mensual = pd.DataFrame({
                 "Mes": [mes.replace("Monto ", "") for mes in meses],
