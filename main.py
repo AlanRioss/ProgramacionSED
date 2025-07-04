@@ -246,9 +246,7 @@ if archivo_antes and archivo_ahora:
 
         ############################## SECCIÓN DE METAS ############################################################
 
-    with tabs[1]:  
-        st.subheader("🎯 Metas")
-
+    with tabs[1]: 
                 # --------- Monto total del proyecto (antes del filtro de metas) ---------
         if not metas_ahora.empty and clave_q is not None:
             monto_total_antes = metas_antes["Monto Total"].sum()
