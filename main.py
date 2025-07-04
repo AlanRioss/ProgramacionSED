@@ -496,7 +496,7 @@ if archivo_antes and archivo_ahora:
     else: "Selecciona una Clave de Meta para ver las secciones de Cronograma, Partidas y Cumplimiento"           
 
 
-       ############################## SECCIÓN DE METAS-PARTIDAS ############################################################
+############################## SECCIÓN DE METAS-PARTIDAS ############################################################
 
     if clave_meta_filtro_valor:
         with subtabs[2]:
@@ -504,86 +504,70 @@ if archivo_antes and archivo_ahora:
 
             clave_meta = clave_meta_filtro_valor
 
-            df_partidas_ahora_qm = metas_partidas_ahora[metas_partidas_ahora["Clave de Meta"] == clave_meta]
-            df_partidas_antes_qm = metas_partidas_antes[metas_partidas_antes["Clave de Meta"] == clave_meta]
+            df_partidas_ahora_qm = metas_partidas_ahora[metas_partidas_ahora["Clave de Meta"] == clave_meta].copy()
+            df_partidas_antes_qm = metas_partidas_antes[metas_partidas_antes["Clave de Meta"] == clave_meta].copy()
 
-            # --- Comparativo de montos anuales por partida ---
+            # Convertir Partida a formato 4 caracteres, omitiendo NaN
+            df_partidas_ahora_qm["Partida_fmt"] = df_partidas_ahora_qm["Partida"].apply(
+                lambda x: str(int(float(x)))[:4] if pd.notnull(x) else None
+            )
+            df_partidas_antes_qm["Partida_fmt"] = df_partidas_antes_qm["Partida"].apply(
+                lambda x: str(int(float(x)))[:4] if pd.notnull(x) else None
+            )
+
+            # Eliminar filas con Partida no válida
+            df_partidas_ahora_qm = df_partidas_ahora_qm[df_partidas_ahora_qm["Partida_fmt"].notna()]
+            df_partidas_antes_qm = df_partidas_antes_qm[df_partidas_antes_qm["Partida_fmt"].notna()]
+
+            # Comparativo de montos anuales por partida
             resumen_ahora = (
-                df_partidas_ahora_qm.groupby("Partida")["Monto Anual"].sum().reset_index()
+                df_partidas_ahora_qm.groupby("Partida_fmt")["Monto Anual"].sum().reset_index()
                 .rename(columns={"Monto Anual": "Monto Anual (Ahora)"})
             )
             resumen_antes = (
-                df_partidas_antes_qm.groupby("Partida")["Monto Anual"].sum().reset_index()
+                df_partidas_antes_qm.groupby("Partida_fmt")["Monto Anual"].sum().reset_index()
                 .rename(columns={"Monto Anual": "Monto Anual (Antes)"})
             )
 
-            df_comparativo = pd.merge(resumen_antes, resumen_ahora, on="Partida", how="outer").fillna(0)
+            df_comparativo = pd.merge(resumen_antes, resumen_ahora, on="Partida_fmt", how="outer").fillna(0)
             df_comparativo["Diferencia"] = (
                 df_comparativo["Monto Anual (Ahora)"] - df_comparativo["Monto Anual (Antes)"]
             )
 
-
-            df_comparativo["Partida"] = df_comparativo["Partida"].apply(lambda x: str(int(float(x)))[:4])
-
-            
-            # --- Estilizado para resaltar diferencias distintas de cero ---
-            df_comparativo_styler = df_comparativo.copy()
-
-            # Asegúrate de que la columna "Diferencia" sea numérica antes de formatear
-            df_comparativo_styler["Diferencia"] = (
-                df_partidas_ahora_qm.groupby("Partida")["Monto Anual"].sum()
-                .reindex(df_comparativo["Partida"]).fillna(0).values
-                -
-                df_partidas_antes_qm.groupby("Partida")["Monto Anual"].sum()
-                .reindex(df_comparativo["Partida"]).fillna(0).values
-            )
-
-            # Función de estilo para resaltar diferencias
+            # Estilizado
             def resaltar_diferencias(val):
-                if val != 0:
-                    return "background-color: #fff3cd"  # amarillo suave
-                return ""
+                return "background-color: #fff3cd" if val != 0 else ""
 
-            styled_df = df_comparativo_styler.style.applymap(resaltar_diferencias, subset=["Diferencia"])
-
-            # Aplica formato de moneda
-            styled_df = styled_df.format({
+            styled_df = df_comparativo.style.applymap(resaltar_diferencias, subset=["Diferencia"]).format({
                 "Monto Anual (Antes)": "${:,.2f}",
                 "Monto Anual (Ahora)": "${:,.2f}",
                 "Diferencia": "${:,.2f}"
             })
 
-
             st.markdown("##### Comparativo de Montos por Partida")
             st.dataframe(styled_df, use_container_width=True)
 
-
-            # --- Distribución mensual por meta ---
+            # --- Distribución mensual ---
             meses = [
                 "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
                 "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
                 "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
             ]
 
-            # --- Segmentador por Partida ---
-            partidas_disponibles = sorted(df_comparativo["Partida"].unique().tolist())
+            partidas_disponibles = sorted(df_comparativo["Partida_fmt"].unique().tolist())
             partidas_mostrar = ["Todas"] + partidas_disponibles
 
             partida_seleccionada = st.radio("Selecciona una partida", partidas_mostrar, horizontal=True)
 
-                        # --- Filtrado de datos según partida seleccionada ---
             if partida_seleccionada == "Todas":
                 df_mes_ahora = df_partidas_ahora_qm
                 df_mes_antes = df_partidas_antes_qm
             else:
-                df_mes_ahora = df_partidas_ahora_qm[df_partidas_ahora_qm["Partida"] == partida_seleccionada]
-                df_mes_antes = df_partidas_antes_qm[df_partidas_antes_qm["Partida"] == partida_seleccionada]
+                df_mes_ahora = df_partidas_ahora_qm[df_partidas_ahora_qm["Partida_fmt"] == partida_seleccionada]
+                df_mes_antes = df_partidas_antes_qm[df_partidas_antes_qm["Partida_fmt"] == partida_seleccionada]
 
-            # --- Sumar por mes ---
             sum_mensual_ahora = df_mes_ahora[meses].sum()
             sum_mensual_antes = df_mes_antes[meses].sum()
-
-
 
             df_mensual = pd.DataFrame({
                 "Mes": [mes.replace("Monto ", "") for mes in meses],
@@ -603,6 +587,7 @@ if archivo_antes and archivo_ahora:
 
             fig.update_layout(height=500)
             st.plotly_chart(fig, use_container_width=True)
+
 
 
  ############################## SECCIÓN DE METAS - CUMPLIMIENTO ############################################################
