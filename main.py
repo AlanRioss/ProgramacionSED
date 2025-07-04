@@ -176,6 +176,22 @@ if archivo_antes and archivo_ahora:
     nombre_proyecto = datos_ahora.loc[datos_ahora["Clave Q"] == clave_q, "Nombre del Proyecto (Ejercicio Actual)"].values
 
     st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto[0]}")
+     # --------- Monto total del proyecto (antes del filtro de metas) ---------
+    if not metas_ahora.empty and clave_q is not None:
+        monto_total_antes = metas_antes["Monto Total"].sum()
+        monto_total_ahora = metas_ahora["Monto Total"].sum()
+        diferencia_monto_total = monto_total_ahora - monto_total_antes
+
+        st.markdown("### 💰 Monto Modificado del Proyecto")
+        col_proy1, col_proy2 = st.columns(2)
+        col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
+        col_proy2.metric(
+            "Monto Total (Ahora)",
+            f"${monto_total_ahora:,.2f}",
+            delta=f"${diferencia_monto_total:,.2f}",
+            delta_color="normal"
+        )
+        st.markdown("---")
 
 
     tabs = st.tabs([
@@ -247,24 +263,7 @@ if archivo_antes and archivo_ahora:
         ############################## SECCIÓN DE METAS ############################################################
 
     with tabs[1]: 
-                # --------- Monto total del proyecto (antes del filtro de metas) ---------
-        if not metas_ahora.empty and clave_q is not None:
-            monto_total_antes = metas_antes["Monto Total"].sum()
-            monto_total_ahora = metas_ahora["Monto Total"].sum()
-            diferencia_monto_total = monto_total_ahora - monto_total_antes
-
-            st.markdown("### 💰 Monto Modificado del Proyecto")
-            col_proy1, col_proy2 = st.columns(2)
-            col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
-            col_proy2.metric(
-                "Monto Total (Ahora)",
-                f"${monto_total_ahora:,.2f}",
-                delta=f"${diferencia_monto_total:,.2f}",
-                delta_color="normal"
-            )
-            st.markdown("---")
-
-        
+                       
         # --------- Filtro de Clave de Meta (solo si hay datos y clave_q) ---------
         if not metas_ahora.empty and clave_q is not None:
             st.markdown("### Seleccionar Meta")
