@@ -248,6 +248,24 @@ if archivo_antes and archivo_ahora:
 
     with tabs[1]:  
         st.subheader("🎯 Metas")
+
+                # --------- Monto total del proyecto (antes del filtro de metas) ---------
+        if not metas_ahora.empty and clave_q is not None:
+            monto_total_antes = metas_antes["Monto Total"].sum()
+            monto_total_ahora = metas_ahora["Monto Total"].sum()
+            diferencia_monto_total = monto_total_ahora - monto_total_antes
+
+            st.markdown("### 💰 Monto Modificado del Proyecto")
+            col_proy1, col_proy2 = st.columns(2)
+            col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
+            col_proy2.metric(
+                "Monto Total (Ahora)",
+                f"${monto_total_ahora:,.2f}",
+                delta=f"${diferencia_monto_total:,.2f}",
+                delta_color="normal"
+            )
+            st.markdown("---")
+
         
         # --------- Filtro de Clave de Meta (solo si hay datos y clave_q) ---------
         if not metas_ahora.empty and clave_q is not None:
@@ -366,9 +384,36 @@ if archivo_antes and archivo_ahora:
                     # ---------- Comparativo por Municipio ----------
                     st.markdown("##### Comparativo por Municipio")
 
+                    # Determinar valores únicos de "Registro Presupuestal" disponibles en ambos DataFrames
+                    registros_disponibles = pd.concat([
+                        df_antes_meta["Registro Presupuestal"],
+                        df_ahora_meta["Registro Presupuestal"]
+                    ]).dropna().unique().tolist()
+
+                    # Ordenar si es posible
+                    orden_preferido = ["Centralizado", "Descentralizado", "Sin Registro"]
+                    registros_filtrados = [r for r in orden_preferido if r in registros_disponibles]
+
+                    # Agregar opción "Todos"
+                    opciones_radio = ["Todos"] + registros_filtrados
+
+                    # Mostrar filtro dinámico
+                    registro_opcion = st.radio(
+                        "Filtrar por Registro Presupuestal:",
+                        opciones_radio,
+                        horizontal=True
+                    )
+
+                    # Aplicar filtro según selección
+                    if registro_opcion != "Todos":
+                        df_antes_meta = df_antes_meta[df_antes_meta["Registro Presupuestal"] == registro_opcion]
+                        df_ahora_meta = df_ahora_meta[df_ahora_meta["Registro Presupuestal"] == registro_opcion]
+
+                    # Agrupar y resumir por municipio
                     resumen_antes = df_antes_meta.groupby("Municipio")[["Cantidad Total", "Monto Total"]].sum().reset_index()
                     resumen_ahora = df_ahora_meta.groupby("Municipio")[["Cantidad Total", "Monto Total"]].sum().reset_index()
 
+                    # Renombrar columnas
                     resumen_antes = resumen_antes.rename(columns={
                         "Cantidad Total": "Cantidad Total (Antes)",
                         "Monto Total": "Monto Total (Antes)"
@@ -378,42 +423,40 @@ if archivo_antes and archivo_ahora:
                         "Monto Total": "Monto Total (Ahora)"
                     })
 
+                    # Unir ambos resúmenes
                     resumen_comparativo = pd.merge(resumen_antes, resumen_ahora, on="Municipio", how="outer").fillna(0)
+
+                    # Calcular columna de diferencia de monto
+                    resumen_comparativo["Diferencia de Monto"] = resumen_comparativo["Monto Total (Ahora)"] - resumen_comparativo["Monto Total (Antes)"]
+
+                    # Reordenar columnas
                     resumen_comparativo = resumen_comparativo[[
                         "Municipio",
                         "Cantidad Total (Antes)", "Cantidad Total (Ahora)",
-                        "Monto Total (Antes)", "Monto Total (Ahora)"
+                        "Monto Total (Antes)", "Monto Total (Ahora)",
+                        "Diferencia de Monto"
                     ]]
 
+                    # Función para resaltar diferencias
                     def resaltar_diferencias_montos(fila):
                         try:
-                            monto_antes = float(fila["Monto Total (Antes)"])
-                            monto_ahora = float(fila["Monto Total (Ahora)"])
-                            if monto_antes != monto_ahora:
-                                return ["background-color: #fff3cd"] * len(fila)  # color amarillo suave
+                            if fila["Diferencia de Monto"] != 0:
+                                return [""]*3 + ["background-color: #fff3cd"]*3
                         except:
                             pass
                         return [""] * len(fila)
 
-                    # 👉 Aplica el estilo antes de formatear los montos a texto
-                    resumen_comparativo_estilado = resumen_comparativo.copy()
-                    for col in ["Monto Total (Antes)", "Monto Total (Ahora)"]:
-                        resumen_comparativo_estilado[col] = resumen_comparativo[col].replace('[\$,]', '', regex=True).astype(float)
-
-                    # Aplica el resaltado por fila
-                    styled_df = resumen_comparativo_estilado.style.apply(resaltar_diferencias_montos, axis=1)
-
-                    # Aplica formato a montos
-                    styled_df = styled_df.format({
+                    # Preparar estilo y formato
+                    styled_df = resumen_comparativo.style.apply(resaltar_diferencias_montos, axis=1).format({
+                        "Cantidad Total (Antes)": "{:,.2f}",
+                        "Cantidad Total (Ahora)": "{:,.2f}",
                         "Monto Total (Antes)": "${:,.2f}",
                         "Monto Total (Ahora)": "${:,.2f}",
-                        "Cantidad Total (Antes)": "{:,.2f}",
-                        "Cantidad Total (Ahora)": "{:,.2f}"
+                        "Diferencia de Monto": "${:,.2f}"
                     })
 
-                    # Muestra la tabla estilizada
+                    # Mostrar
                     st.dataframe(styled_df, use_container_width=True)
-
               
 
 
