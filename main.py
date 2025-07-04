@@ -457,7 +457,6 @@ if archivo_antes and archivo_ahora:
 
                     # Mostrar
                     st.dataframe(styled_df, use_container_width=True)
-              
 
 
 ############################## SECCIÓN DE CRONOGRAMA ############################################################
@@ -630,6 +629,7 @@ if archivo_antes and archivo_ahora:
 
             fig.update_layout(height=500)
             st.plotly_chart(fig, use_container_width=True)
+
 
 
 
