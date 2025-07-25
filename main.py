@@ -176,7 +176,7 @@ if archivo_antes and archivo_ahora:
     nombre_proyecto = datos_ahora.loc[datos_ahora["Clave Q"] == clave_q, "Nombre del Proyecto (Ejercicio Actual)"].values
 
     st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto[0]}")
-     # --------- Monto total del proyecto (antes del filtro de metas) ---------
+                   # --------- Monto total del proyecto (antes del filtro de metas) ---------
     if not metas_ahora.empty and clave_q is not None:
         monto_total_antes = metas_antes["Monto Total"].sum()
         monto_total_ahora = metas_ahora["Monto Total"].sum()
@@ -262,8 +262,10 @@ if archivo_antes and archivo_ahora:
 
         ############################## SECCIÓN DE METAS ############################################################
 
-    with tabs[1]: 
-                       
+    with tabs[1]:  
+        st.subheader("🎯 Metas")
+
+         
         # --------- Filtro de Clave de Meta (solo si hay datos y clave_q) ---------
         if not metas_ahora.empty and clave_q is not None:
             st.markdown("### Seleccionar Meta")
@@ -295,7 +297,8 @@ if archivo_antes and archivo_ahora:
             "💰 Partidas",
             "✅ Cumplimiento"
         ])
-
+    if clave_meta_filtro_valor:
+    
         with subtabs[0]:
             st.write("📋 Información de la Meta")
         
@@ -454,6 +457,9 @@ if archivo_antes and archivo_ahora:
 
                     # Mostrar
                     st.dataframe(styled_df, use_container_width=True)
+
+    else: 
+        st.info("Selecciona una Clave de Meta para ver el comparativo de metas, cronograma, partidas y cumplimiento.")
 
 
 ############################## SECCIÓN DE CRONOGRAMA ############################################################
