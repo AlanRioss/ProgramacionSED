@@ -260,6 +260,69 @@ if archivo_antes and archivo_ahora:
                             st.markdown("Ahora:")
                             st.markdown(valor_ahora)
 
+                # Solo para el campo Diagnóstico, mostrar prompt de evaluación
+                    if campo == "Diagnóstico":
+                        with st.expander("✨ Evaluar con ChatGPT"):
+                            st.markdown("#### Evaluación automática (vía ChatGPT manual)")
+                            criterios_diagnostico = """- Explica claramente una problemática pública.
+                            - Identifica al grupo poblacional afectado.
+                            - Es específico y no genérico."""
+
+                            prompt_diagnostico = f"""
+                            Eres un evaluador de proyectos públicos. Tu tarea es revisar el siguiente texto correspondiente al campo "Diagnóstico" de una propuesta de inversión pública estatal y emitir una evaluación objetiva.
+
+                            TEXTO A EVALUAR:
+                            ---
+                            {valor_ahora}
+                            ---
+
+                            Evalúa si cumple con los siguientes criterios obligatorios:
+
+                            1. **Población o área de enfoque identificada**: ¿Se menciona claramente a quién afecta el problema?
+                            2. **Problemática central, oportunidad o situación descrita*: ¿Se describe de forma clara y específica el problema público a resolver, la oportunidad o situación a atender?
+                            3. **Magnitud del problema cuantificada**: ¿Se incluyen datos duros, cifras oficiales o indicadores que permitan dimensionar el problema?
+
+                            Además, asegúrate de que el diagnóstico **no** sea simplemente una descripción del proyecto ni su justificación técnica o financiera. Su propósito es explicar la situación que origina la necesidad del proyecto.
+
+                            INSTRUCCIONES:
+
+                            - Indica si el texto CUMPLE o NO CUMPLE con los 3 criterios.
+                            - Justifica brevemente tu respuesta.
+                            - Si aplica, sugiere cómo podría mejorarse el diagnóstico.
+
+                            Formato de salida esperado:
+                            1. ¿Cumple con los criterios?: Sí / No
+                            2. Justificación:
+                            3. Elabora un texto breve en el que se indique cuál de los criterios no se cumplen y porque. Redactado para el capturista:
+                            """.strip()
+
+
+                            st.code(prompt_diagnostico, language="markdown")
+
+                            copy_code = f"""
+                            <div>
+                                <button onclick="copyPrompt()" style="padding:8px 16px; font-size:14px;">📋 Copiar al portapapeles</button>
+                                <span id="copiado" style="margin-left:10px; color:green; display:none;">✅ Copiado</span>
+
+                                <script>
+                                function copyPrompt() {{
+                                    const text = `{prompt_diagnostico.replace("`", "\\`")}`;
+                                    navigator.clipboard.writeText(text).then(function() {{
+                                        var alerta = document.getElementById("copiado");
+                                        alerta.style.display = "inline";
+                                        setTimeout(function() {{
+                                            alerta.style.display = "none";
+                                        }}, 2000);
+                                    }});
+                                }}
+                                </script>
+                            </div>
+                            """
+                            st.components.v1.html(copy_code, height=60)
+
+
+                            st.caption("Haz clic en el botón para copiar el prompt al portapapeles y pégalo en https://chat.openai.com")
+
         ############################## SECCIÓN DE METAS ############################################################
 
     with tabs[1]:  
