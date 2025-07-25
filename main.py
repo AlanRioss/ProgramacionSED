@@ -398,11 +398,15 @@ if archivo_antes and archivo_ahora:
                     opciones_radio = ["Todos"] + registros_filtrados
 
                     # Mostrar filtro dinámico
-                    registro_opcion = st.radio(
-                        "Filtrar por Registro Presupuestal:",
-                        opciones_radio,
-                        horizontal=True
-                    )
+                    if opciones_radio and len(opciones_radio) > 0:
+                        registro_opcion = st.radio(
+                            "Filtrar por Registro Presupuestal:",
+                            opciones_radio,
+                            horizontal=True,
+                            key=f"radio_registro_{clave_meta_filtro_valor}"
+                        )
+                    else:
+                        registro_opcion = None
 
                     # Aplicar filtro según selección
                     if registro_opcion != "Todos":
