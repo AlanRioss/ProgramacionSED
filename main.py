@@ -244,10 +244,11 @@ from pathlib import Path
 
 @st.cache_data(show_spinner=False)
 def cargar_shapefile_rds() -> gpd.GeoDataFrame:
-    base = Path(gtoSHP).parent  # carpeta donde está este .py
+    base = Path(/gtoSHP).parent
     shp = base / "app" / "gtoSHP" / "mun_test_wgs.shp"
-    gdf = gpd.read_file(shp).to_crs(4326)
-    return gdf
+    # Fuerza engine=pyogrio para evitar Fiona/GDAL del sistema
+    return gpd.read_file(shp, engine="pyogrio").to_crs(4326)
+
 
 # ========= FIN BLOQUE 1 =========
 # ========= BLOQUE 2 · SIDEBAR: CARGA Y FILTROS (Eje → Dependencia → Clave Q) =========
@@ -1215,4 +1216,5 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
