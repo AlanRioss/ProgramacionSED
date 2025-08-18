@@ -720,7 +720,7 @@ with tabs[1]:
 
             st.dataframe(df_comp_mpio.style.apply(_resaltar_cambios, axis=1).format(formato), use_container_width=True)
 
-            # --- Mapa municipal usando GeoJSON (sin geopandas) ---
+            # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
             with st.expander("🗺️ Mapa municipal (clic para desplegar)", expanded=False):
                 col_opts1, col_opts2 = st.columns([1, 1])
                 with col_opts1:
@@ -733,27 +733,42 @@ with tabs[1]:
                 center_lat = (miny + maxy) / 2
                 center_lon = (minx + maxx) / 2
             
-                # Detecta campo nombre en properties
+                # Detectar el campo de nombre en las properties del primer feature
                 name_candidates = ["NOMGEO", "NOM_MUN", "MUNICIPIO", "NOMBRE", "name"]
                 example_props = (geojson_data.get("features") or [{}])[0].get("properties") or {}
-                name_col = next((c for c in name_candidates if c in example_props), None)
+            
+                # 1) intenta alguno de los candidatos conocidos (que sea escalar legible)
+                name_col = next(
+                    (c for c in name_candidates if c in example_props and isinstance(example_props[c], (str, int, float))),
+                    None
+                )
+                # 2) si no hay, toma el primer campo escalar que encuentres
+                if not name_col:
+                    for k, v in example_props.items():
+                        if isinstance(v, (str, int, float)):
+                            name_col = k
+                            break
             
                 m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_start, tiles="CartoDB positron")
             
+                # Construir tooltip SOLO si hay un campo válido
+                tooltip = folium.GeoJsonTooltip(
+                    fields=[name_col],
+                    aliases=["Municipio:"]
+                ) if name_col else None
+            
                 folium.GeoJson(
                     geojson_data,
-                    tooltip=folium.GeoJsonTooltip(
-                        fields=[name_col] if name_col else None,
-                        aliases=["Municipio:"] if name_col else None
-                    ),
-                    style_function=lambda f: {"color":"#555","weight":1,"fillColor":"#2b8cbe","fillOpacity":0.25},
-                    highlight_function=lambda f: {"weight":2,"fillOpacity":0.45}
+                    tooltip=tooltip,  # None si no hay name_col -> Folium lo ignora y no rompe
+                    style_function=lambda f: {"color": "#555", "weight": 1, "fillColor": "#2b8cbe", "fillOpacity": 0.25},
+                    highlight_function=lambda f: {"weight": 2, "fillOpacity": 0.45}
                 ).add_to(m)
             
-                # Enfocar a la extensión del GeoJSON
+                # Enfocar a la extensión real
                 m.fit_bounds([[miny, minx], [maxy, maxx]])
             
                 st_folium(m, use_container_width=True, height=mapa_height)
+
 
 
 # ================== SUBTAB 2: Cronograma y Partidas ==================
@@ -1279,6 +1294,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
