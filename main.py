@@ -721,7 +721,7 @@ with tabs[1]:
             st.dataframe(df_comp_mpio.style.apply(_resaltar_cambios, axis=1).format(formato), use_container_width=True)
 
             # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
-            with st.expander("🗺️ Mapa municipal (clic para desplegar)", expanded=False):
+            with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
                 col_opts1, col_opts2 = st.columns([1, 1])
                 with col_opts1:
                     zoom_start = st.slider("Zoom inicial", 6, 12, 8, 1, key=f"zoom_{_fmt_id_meta(id_meta_sel)}")
@@ -867,7 +867,7 @@ with subtabs[1]:
             df_crono["DuracionDias"] = (df_crono["Fecha de Termino"] - df_crono["Fecha de Inicio"]).dt.days
 
             # === Opciones de etiquetas de monto en barras ===
-            with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
+            with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
                 use_compact_amount = st.toggle(
                     "Usar formato compacto (K/M/B) en las barras",
                     value=True,
@@ -971,8 +971,6 @@ with subtabs[1]:
 
             st.plotly_chart(fig, use_container_width=True)
 
-        # ---------- (Aquí continúa tu sección de Partidas tal como la tengas) ----------
-        # ... tus funciones/agrupaciones y gráficos de Partidas ...
 
 
             # ---------- Partidas ----------
@@ -1067,8 +1065,6 @@ with subtabs[1]:
                 .applymap(_bg_delta, subset=["Δ"])
             )
 
-            st.markdown("##### Tabla mensual (Antes vs Ahora)")
-            st.dataframe(styled_tab, use_container_width=True, hide_index=True)
 
             # Totales rápidos (opcional)
             total_antes = df_tab["Antes"].sum()
@@ -1129,9 +1125,10 @@ with subtabs[1]:
 
             st.plotly_chart(fig_mes, use_container_width=True)
 
-
-
             st.dataframe(styled_df, use_container_width=True)
+
+            st.markdown("##### Tabla mensual (Antes vs Ahora)")
+            st.dataframe(styled_tab, use_container_width=True, hide_index=True)
 
             # Catálogo de partidas (filtrado por las visibles en 'Ahora')
             partidas_visibles = (
@@ -1294,6 +1291,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
