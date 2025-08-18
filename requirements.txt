@@ -1,8 +1,17 @@
+# Asegura herramientas modernas de build (evita compilar desde source)
+pip>=24.2
+setuptools>=68.2
+wheel>=0.43.0
+
+# Numpy primero para que pandas use wheel ya instalado
+numpy==1.26.4
+
+# Core
 streamlit==1.36.0
-pandas==2.2.2
+pandas==2.2.2 --only-binary=:all:
 plotly==5.22.0
 
-# Mapas / shapefiles (usa pyogrio para evitar problemas con GDAL/Fiona)
+# Mapas / shapefiles (pyogrio trae wheels con GDAL embebido)
 geopandas==0.14.4
 pyogrio==0.7.2
 shapely==2.0.4
@@ -12,6 +21,6 @@ pyproj==3.6.1
 folium==0.16.0
 streamlit-folium==0.22.0
 
-# Lectura de Excel
+# Lectura Excel (xls/xlsx)
 openpyxl==3.1.5
 xlrd==1.2.0
