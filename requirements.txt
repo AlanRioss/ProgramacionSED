@@ -1,16 +1,9 @@
-# Core (orden recomendado para resolver más rápido)
 numpy>=2.3,<2.4
 pandas>=2.2.3,<2.3
 streamlit==1.36.0
 plotly==5.22.0
 
-# Mapas / shapefiles (sin Fiona/GDAL de sistema)
-geopandas==0.14.4
-pyogrio==0.7.2
-shapely==2.0.4
-pyproj==3.6.1
-
-# Mapas interactivos
+# Mapas interactivos (solo Python puro)
 folium==0.16.0
 streamlit-folium==0.22.0
 
