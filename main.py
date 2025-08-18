@@ -240,10 +240,14 @@ def agregar_totales(df: pd.DataFrame) -> pd.DataFrame:
     out["Monto Total"] = out.filter(like="Monto").sum(axis=1, skipna=True)
     return out
 
+from pathlib import Path
+
 @st.cache_data(show_spinner=False)
 def cargar_shapefile_rds() -> gpd.GeoDataFrame:
-    """Carga shapefile municipal una sola vez y lo proyecta a WGS84."""
-    return gpd.read_file("app/gtoSHP/mun_test_wgs.shp").to_crs(4326)
+    base = Path(gtoSHP).parent  # carpeta donde está este .py
+    shp = base / "app" / "gtoSHP" / "mun_test_wgs.shp"
+    gdf = gpd.read_file(shp).to_crs(4326)
+    return gdf
 
 # ========= FIN BLOQUE 1 =========
 # ========= BLOQUE 2 · SIDEBAR: CARGA Y FILTROS (Eje → Dependencia → Clave Q) =========
@@ -1211,3 +1215,4 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
