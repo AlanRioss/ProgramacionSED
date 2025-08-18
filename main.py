@@ -1120,7 +1120,7 @@ with subtabs[1]:
             st.plotly_chart(fig_mes, use_container_width=True)
 
            
-            st.dataframe(styled_df, use_container_width=True)
+           # st.dataframe(styled_df, use_container_width=True)
 
             st.markdown("##### Tabla mensual (Antes vs Ahora)")
             st.dataframe(styled_tab, use_container_width=True, hide_index=True)
@@ -1286,6 +1286,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
