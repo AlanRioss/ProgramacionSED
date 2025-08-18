@@ -866,8 +866,16 @@ with subtabs[1]:
             # Duración (para decidir si ocultar etiqueta en barras cortas)
             df_crono["DuracionDias"] = (df_crono["Fecha de Termino"] - df_crono["Fecha de Inicio"]).dt.days
 
-            # === Opciones de etiquetas de monto en barras ===
-            with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
+            # === Etiquetas de monto (UI existente) + regla fija: solo mostrar si monto ≠ 0 ===
+
+            # 1) Asegura columna numérica ANTES de construir la etiqueta (para la regla fija)
+            df_crono["Monto_val"] = pd.to_numeric(
+                df_crono.get("Monto Actividad / Hito", pd.Series([None]*len(df_crono))),
+                errors="coerce"
+            ).fillna(0.0)
+
+            # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
+            with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
                 use_compact_amount = st.toggle(
                     "Usar formato compacto (K/M/B) en las barras",
                     value=True,
@@ -890,7 +898,12 @@ with subtabs[1]:
                     disabled=not hide_on_short_bars
                 )
 
+            # 3) Construcción de la etiqueta con la REGLA FIJA: no mostrar si monto == 0
             def _pick_label(row):
+                # Regla fija (sin UI): solo etiquetar montos distintos de cero
+                if row["Monto_val"] == 0:
+                    return ""
+                # Resto de opciones (las que ya tienes en el expander)
                 if hide_on_short_bars and row["DuracionDias"] < min_days_short:
                     return ""
                 if show_only_now and row.get("Versión") != "Ahora":
@@ -899,8 +912,14 @@ with subtabs[1]:
 
             df_crono["MontoLabel"] = df_crono.apply(_pick_label, axis=1)
 
-            # === Filtro: mostrar solo actividades con monto ≠ 0 (para el gráfico)
+
+            # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico)
             with st.expander("🔎 Filtros del Cronograma", expanded=True):
+                show_only_version_now = st.toggle(
+                    "Mostrar solo versión 'Ahora'",
+                    value=False,
+                    help="Oculta las barras de 'Antes' y muestra únicamente las actividades/hitos actuales."
+                )
                 only_nonzero_amounts = st.toggle(
                     "Mostrar solo actividades/hitos con monto distinto de cero",
                     value=False,
@@ -912,65 +931,68 @@ with subtabs[1]:
                 errors="coerce"
             ).fillna(0.0)
 
-            df_crono_plot = df_crono
+            # Dataset a graficar aplicando filtros
+            df_crono_plot = df_crono.copy()
+            if show_only_version_now:
+                df_crono_plot = df_crono_plot[df_crono_plot["Versión"] == "Ahora"]
             if only_nonzero_amounts:
-                df_crono_plot = df_crono[df_crono["Monto_val"].abs() > 0].copy()
-                if df_crono_plot.empty:
-                    st.info("No hay actividades/hitos con monto distinto de cero bajo el criterio actual.")
+                df_crono_plot = df_crono_plot[df_crono_plot["Monto_val"].abs() > 0]
 
-            # Orden del eje Y por clave numérica (sobre dataset a graficar)
-            orden_y = df_crono_plot.sort_values("Clave Num")["EtiquetaY"].tolist()
+            if df_crono_plot.empty:
+                st.info("No hay actividades/hitos para los filtros actuales.")
+            else:
+                # Orden del eje Y por clave numérica (sobre dataset a graficar)
+                orden_y = df_crono_plot.sort_values("Clave Num")["EtiquetaY"].tolist()
 
-            # === Altura dinámica según número de filas (más filas -> más alto)
-            filas = df_crono_plot["EtiquetaY"].nunique()
-            ALTURA_BASE = 420
-            ALTURA_POR_FILA = 26
-            altura = max(ALTURA_BASE, ALTURA_POR_FILA * filas + 140)
+                # === Altura dinámica según número de filas (más filas -> más alto)
+                filas = df_crono_plot["EtiquetaY"].nunique()
+                ALTURA_BASE = 420
+                ALTURA_POR_FILA = 26
+                altura = max(ALTURA_BASE, ALTURA_POR_FILA * filas + 140)
 
-            # ---------- Gráfico Gantt ----------
-            fig = px.timeline(
-                df_crono_plot,
-                x_start="Fecha de Inicio",
-                x_end="Fecha de Termino",
-                y="EtiquetaY",
-                color="Versión",
-                text="MontoLabel",
-                color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
-                title=f"Cronograma de Actividades / Hitos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
-                custom_data=["Actividad_full", "Monto_full"]
-            )
+                # ---------- Gráfico Gantt ----------
+                fig = px.timeline(
+                    df_crono_plot,
+                    x_start="Fecha de Inicio",
+                    x_end="Fecha de Termino",
+                    y="EtiquetaY",
+                    color="Versión",
+                    text="MontoLabel",
+                    color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
+                    title=f"Cronograma de Actividades / Hitos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
+                    custom_data=["Actividad_full", "Monto_full"]
+                )
 
-            # Tooltip con descripción completa + monto completo
-            fig.update_traces(
-                hovertemplate=(
-                    "<b>%{customdata[0]}</b><br>"
-                    "Inicio: %{x|%d/%m/%Y}<br>"
-                    "Fin: %{x_end|%d/%m/%Y}<br>"
-                    "Monto: %{customdata[1]}<extra></extra>"
-                ),
-                texttemplate="%{text}",
-                textposition="inside",
-                insidetextanchor="middle",
-                textfont_size=11,
-                textfont_color="white",
-                cliponaxis=False
-            )
+                # Tooltip con descripción completa + monto completo
+                fig.update_traces(
+                    hovertemplate=(
+                        "<b>%{customdata[0]}</b><br>"
+                        "Inicio: %{x|%d/%m/%Y}<br>"
+                        "Fin: %{x_end|%d/%m/%Y}<br>"
+                        "Monto: %{customdata[1]}<extra></extra>"
+                    ),
+                    texttemplate="%{text}",
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    textfont_size=11,
+                    textfont_color="white",
+                    cliponaxis=False
+                )
 
-            fig.update_yaxes(
-                categoryorder="array",
-                categoryarray=orden_y,
-                autorange="reversed",
-                ticklabelposition="outside left",
-                automargin=True
-            )
+                fig.update_yaxes(
+                    categoryorder="array",
+                    categoryarray=orden_y,
+                    autorange="reversed",
+                    ticklabelposition="outside left",
+                    automargin=True
+                )
 
-            fig.update_layout(
-                height=altura,
-                margin=dict(l=180, r=20, t=60, b=40)
-            )
+                fig.update_layout(
+                    height=altura,
+                    margin=dict(l=180, r=20, t=60, b=40)
+                )
 
-            st.plotly_chart(fig, use_container_width=True)
-
+                st.plotly_chart(fig, use_container_width=True)
 
 
             # ---------- Partidas ----------
@@ -1285,6 +1307,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
