@@ -243,12 +243,54 @@ def agregar_totales(df: pd.DataFrame) -> pd.DataFrame:
 from pathlib import Path
 
 @st.cache_data(show_spinner=False)
-def cargar_shapefile_rds() -> gpd.GeoDataFrame:
-    base = Path(/gtoSHP).parent
-    shp = base / "app" / "gtoSHP" / "mun_test_wgs.shp"
-    # Fuerza engine=pyogrio para evitar Fiona/GDAL del sistema
-    return gpd.read_file(shp, engine="pyogrio").to_crs(4326)
+def cargar_geometria_municipal(geojson_path: str | Path = "gtoSHP/mun_test_wgs.geojson") -> dict:
+    """
+    Carga el GeoJSON de municipios (EPSG:4326) desde rutas relativas seguras.
+    Devuelve el dict ya parseado.
+    """
+    base = Path(__file__).parent
+    candidates = [
+        base / geojson_path,
+        Path.cwd() / geojson_path,
+        base.parent / geojson_path,
+    ]
+    for p in candidates:
+        if p.is_file():
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+    raise FileNotFoundError(
+        f"No encontré {geojson_path}. Sube gtoSHP/mun_test_wgs.geojson al repo."
+    )
 
+def _geojson_bounds(geojson: dict) -> tuple[float, float, float, float]:
+    """
+    Calcula (minx, miny, maxx, maxy) recorriendo coordenadas del GeoJSON.
+    Soporta Polygon/MultiPolygon.
+    """
+    import math
+    minx = miny = math.inf
+    maxx = maxy = -math.inf
+
+    def _walk(coords):
+        nonlocal minx, miny, maxx, maxy
+        if isinstance(coords[0], (float, int)):  # [x, y]
+            x, y = coords[:2]
+            minx = min(minx, x); miny = min(miny, y)
+            maxx = max(maxx, x); maxy = max(maxy, y)
+        else:
+            for c in coords:
+                _walk(c)
+
+    for feat in geojson.get("features", []):
+        geom = feat.get("geometry") or {}
+        coords = geom.get("coordinates")
+        if coords:
+            _walk(coords)
+
+    if not all(map(math.isfinite, [minx, miny, maxx, maxy])):
+        # Fallback genérico
+        return (-103.0, 18.0, -96.0, 23.0)
+    return (minx, miny, maxx, maxy)
 
 # ========= FIN BLOQUE 1 =========
 # ========= BLOQUE 2 · SIDEBAR: CARGA Y FILTROS (Eje → Dependencia → Clave Q) =========
@@ -678,20 +720,41 @@ with tabs[1]:
 
             st.dataframe(df_comp_mpio.style.apply(_resaltar_cambios, axis=1).format(formato), use_container_width=True)
 
-            # --- Mapa municipal (cargado una sola vez)
-            with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
-                gdf = cargar_shapefile_rds()
-                minx, miny, maxx, maxy = gdf.total_bounds
-                name_col = next((c for c in ["NOMGEO","NOM_MUN","MUNICIPIO","NOMBRE"] if c in gdf.columns), gdf.columns[0])
-
-                m = folium.Map(location=[(miny+maxy)/2, (minx+maxx)/2], zoom_start=8, tiles="CartoDB positron")
+            # --- Mapa municipal usando GeoJSON (sin geopandas) ---
+            with st.expander("🗺️ Mapa municipal (clic para desplegar)", expanded=False):
+                col_opts1, col_opts2 = st.columns([1, 1])
+                with col_opts1:
+                    zoom_start = st.slider("Zoom inicial", 6, 12, 8, 1, key=f"zoom_{_fmt_id_meta(id_meta_sel)}")
+                with col_opts2:
+                    mapa_height = st.slider("Alto del mapa (px)", 360, 800, 520, 40, key=f"height_{_fmt_id_meta(id_meta_sel)}")
+            
+                geojson_data = cargar_geometria_municipal("gtoSHP/mun_test_wgs.geojson")
+                minx, miny, maxx, maxy = _geojson_bounds(geojson_data)
+                center_lat = (miny + maxy) / 2
+                center_lon = (minx + maxx) / 2
+            
+                # Detecta campo nombre en properties
+                name_candidates = ["NOMGEO", "NOM_MUN", "MUNICIPIO", "NOMBRE", "name"]
+                example_props = (geojson_data.get("features") or [{}])[0].get("properties") or {}
+                name_col = next((c for c in name_candidates if c in example_props), None)
+            
+                m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_start, tiles="CartoDB positron")
+            
                 folium.GeoJson(
-                    gdf,
-                    tooltip=folium.GeoJsonTooltip(fields=[name_col], aliases=["Municipio:"]),
+                    geojson_data,
+                    tooltip=folium.GeoJsonTooltip(
+                        fields=[name_col] if name_col else None,
+                        aliases=["Municipio:"] if name_col else None
+                    ),
                     style_function=lambda f: {"color":"#555","weight":1,"fillColor":"#2b8cbe","fillOpacity":0.25},
                     highlight_function=lambda f: {"weight":2,"fillOpacity":0.45}
                 ).add_to(m)
-                st_folium(m, use_container_width=True, height=520)
+            
+                # Enfocar a la extensión del GeoJSON
+                m.fit_bounds([[miny, minx], [maxy, maxx]])
+            
+                st_folium(m, use_container_width=True, height=mapa_height)
+
 
 # ================== SUBTAB 2: Cronograma y Partidas ==================
 with subtabs[1]:
@@ -1216,5 +1279,6 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
