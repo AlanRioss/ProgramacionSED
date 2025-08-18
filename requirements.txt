@@ -1,6 +1,6 @@
-# Core (orden recomendado para resolver rápido)
-numpy>=2.1,<2.4
-pandas==2.2.2
+# Core (orden recomendado para resolver más rápido)
+numpy>=2.3,<2.4
+pandas>=2.2.3,<2.3
 streamlit==1.36.0
 plotly==5.22.0
 
