@@ -6,7 +6,7 @@ import plotly.express as px
 import difflib
 import unicodedata
 import html
-import geopandas as gpd
+import json
 import folium
 from streamlit_folium import st_folium
 
@@ -1279,6 +1279,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
