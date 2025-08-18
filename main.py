@@ -1028,6 +1028,7 @@ with subtabs[1]:
             ]
             sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
             sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
+           
             # --- Distribución mensual (tabla con etiquetas + barras con labels) ---
             meses_cols = [
                 "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
@@ -1060,14 +1061,6 @@ with subtabs[1]:
             )
 
 
-            # Totales rápidos (opcional)
-            total_antes = df_tab["Antes"].sum()
-            total_ahora = df_tab["Ahora"].sum()
-            delta_total = total_ahora - total_antes
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Antes", f"${total_antes:,.2f}")
-            c2.metric("Total Ahora", f"${total_ahora:,.2f}", delta=f"${delta_total:,.2f}")
-            c3.metric("Δ Total (Ahora−Antes)", f"${delta_total:,.2f}")
 
             # ===== Gráfico mensual con etiquetas SOLO en "Ahora" (K/M/B y sin ceros) =====
 
@@ -1286,6 +1279,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
