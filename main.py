@@ -1009,6 +1009,12 @@ with subtabs[1]:
             df_comp_part, df_mensual, dfp_a, dfp_h = _partidas_resumen(metas_partidas_antes, metas_partidas_ahora, id_meta_sel)
 
             st.markdown("##### Comparativo de Montos por Partida")
+            styled_df = df_comp_part.style.applymap(lambda v: "background-color:#fff3cd" if v != 0 else "", subset=["Diferencia"]).format({
+                "Monto Anual (Antes)": "${:,.2f}",
+                "Monto Anual (Ahora)": "${:,.2f}",
+                "Diferencia": "${:,.2f}"
+            })
+
 
             # Distribución mensual (selector rápido)
             partidas_disponibles = sorted(df_comp_part["Partida_fmt"].astype(str).unique().tolist())
@@ -1028,7 +1034,6 @@ with subtabs[1]:
             ]
             sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
             sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
-           
             # --- Distribución mensual (tabla con etiquetas + barras con labels) ---
             meses_cols = [
                 "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
@@ -1059,6 +1064,9 @@ with subtabs[1]:
                 .format({"Antes": "${:,.2f}", "Ahora": "${:,.2f}", "Δ": "${:,.2f}"})
                 .applymap(_bg_delta, subset=["Δ"])
             )
+
+           # st.markdown("##### Tabla mensual (Antes vs Ahora)")
+            #st.dataframe(styled_tab, use_container_width=True, hide_index=True)
 
 
 
@@ -1112,12 +1120,9 @@ with subtabs[1]:
 
             st.plotly_chart(fig_mes, use_container_width=True)
 
-           
-           st.dataframe(styled_df, use_container_width=True)
 
-            st.markdown("##### Tabla mensual (Antes vs Ahora)")
-            
-            st.dataframe(styled_tab, use_container_width=True, hide_index=True)
+
+            st.dataframe(styled_df, use_container_width=True)
 
             # Catálogo de partidas (filtrado por las visibles en 'Ahora')
             partidas_visibles = (
@@ -1280,6 +1285,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
