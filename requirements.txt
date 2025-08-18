@@ -1,6 +1,17 @@
-streamlit>=1.32.0
-pandas>=2.2.0
-openpyxl>=3.1.2
-plotly>=5.20.0
-matplotlib>=3.8.0
-numpy>=1.26.0
+streamlit==1.36.0
+pandas==2.2.2
+plotly==5.22.0
+
+# Mapas / shapefiles (usa pyogrio para evitar problemas con GDAL/Fiona)
+geopandas==0.14.4
+pyogrio==0.7.2
+shapely==2.0.4
+pyproj==3.6.1
+
+# Mapas interactivos
+folium==0.16.0
+streamlit-folium==0.22.0
+
+# Lectura de Excel
+openpyxl==3.1.5
+xlrd==1.2.0
