@@ -1029,6 +1029,99 @@ with subtabs[1]:
                     return comp, df_mensual, a, h
 
                 df_comp_part, df_mensual, dfp_a, dfp_h = _partidas_resumen(metas_partidas_antes, metas_partidas_ahora, id_meta_sel)
+                # --- Normalización robusta para evitar KeyError en Cloud ---
+                import re
+                
+                def _pick_col_casefold(df: pd.DataFrame, candidates: list[str]) -> str | None:
+                    """Devuelve el nombre REAL de la columna en df que coincide con alguno de los candidatos (ignorando mayúsculas, acentos, espacios y '/')."""
+                    def _norm(s: str) -> str:
+                        s = s.casefold()
+                        s = s.replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u").replace("ñ","n")
+                        s = re.sub(r"\s+|\/", "", s)
+                        return s
+                    cols_norm = { _norm(c): c for c in df.columns }
+                    for cand in candidates:
+                        key = _norm(cand)
+                        if key in cols_norm:
+                            return cols_norm[key]
+                    return None
+                
+                def _standardize_partidas_df(df: pd.DataFrame) -> pd.DataFrame:
+                    if df is None or df.empty:
+                        return pd.DataFrame(columns=[
+                            "Partida_fmt","Clave de Actividad /Hito","Descripción","Monto Anual",
+                            "Monto Enero","Monto Febrero","Monto Marzo","Monto Abril","Monto Mayo","Monto Junio",
+                            "Monto Julio","Monto Agosto","Monto Septiembre","Monto Octubre","Monto Noviembre","Monto Diciembre"
+                        ])
+                    df = df.copy()
+                
+                    # 1) Partida_fmt (si no existe)
+                    if "Partida_fmt" not in df.columns or df["Partida_fmt"].isna().all():
+                        part_col = _pick_col_casefold(df, ["Partida","Partida Gasto","Partida de Gasto","Clave Partida"])
+                        if part_col:
+                            df["Partida_fmt"] = df[part_col].map(lambda x: re.sub(r"\D","", str(x))[:4] if pd.notna(x) else pd.NA)
+                
+                    # 2) Clave de Actividad /Hito
+                    key_col = _pick_col_casefold(df, [
+                        "Clave de Actividad /Hito","Clave de Actividad/Hito","Clave Actividad/Hito",
+                        "Clave de Actividad","Clave Actividad","Actividad/Hito"
+                    ])
+                    if key_col and key_col != "Clave de Actividad /Hito":
+                        df.rename(columns={key_col: "Clave de Actividad /Hito"}, inplace=True)
+                    elif "Clave de Actividad /Hito" not in df.columns:
+                        df["Clave de Actividad /Hito"] = pd.NA
+                
+                    # 3) Descripción (actividad/hito)
+                    desc_col = _pick_col_casefold(df, [
+                        "Descripción","Descripcion","Descripción Actividad/Hito","Descripcion Actividad/Hito",
+                        "Descripción Actividad","Descripcion Actividad","Desc"
+                    ])
+                    if desc_col and desc_col != "Descripción":
+                        df.rename(columns={desc_col: "Descripción"}, inplace=True)
+                    elif "Descripción" not in df.columns:
+                        df["Descripción"] = ""
+                
+                    # 4) Monto Anual
+                    monto_col = _pick_col_casefold(df, ["Monto Anual","Monto anual","Monto Total Anual","Monto total anual"])
+                    if monto_col and monto_col != "Monto Anual":
+                        df.rename(columns={monto_col: "Monto Anual"}, inplace=True)
+                    if "Monto Anual" not in df.columns:
+                        df["Monto Anual"] = 0.0
+                    df["Monto Anual"] = pd.to_numeric(df["Monto Anual"], errors="coerce").fillna(0.0)
+                
+                    # 5) Meses (crear si no existen; convertir a numérico)
+                    meses_map = {
+                        "Monto Enero": ["Monto Enero","Enero","$ Enero"],
+                        "Monto Febrero": ["Monto Febrero","Febrero","$ Febrero"],
+                        "Monto Marzo": ["Monto Marzo","Marzo","$ Marzo"],
+                        "Monto Abril": ["Monto Abril","Abril","$ Abril"],
+                        "Monto Mayo": ["Monto Mayo","Mayo","$ Mayo"],
+                        "Monto Junio": ["Monto Junio","Junio","$ Junio"],
+                        "Monto Julio": ["Monto Julio","Julio","$ Julio"],
+                        "Monto Agosto": ["Monto Agosto","Agosto","$ Agosto"],
+                        "Monto Septiembre": ["Monto Septiembre","Septiembre","$ Septiembre"],
+                        "Monto Octubre": ["Monto Octubre","Octubre","$ Octubre"],
+                        "Monto Noviembre": ["Monto Noviembre","Noviembre","$ Noviembre"],
+                        "Monto Diciembre": ["Monto Diciembre","Diciembre","$ Diciembre"],
+                    }
+                    for std, variants in meses_map.items():
+                        found = _pick_col_casefold(df, variants)
+                        if found and found != std:
+                            df.rename(columns={found: std}, inplace=True)
+                        if std not in df.columns:
+                            df[std] = 0.0
+                        df[std] = pd.to_numeric(df[std], errors="coerce").fillna(0.0)
+                
+                    # 6) Asegura Partida_fmt final
+                    if "Partida_fmt" not in df.columns:
+                        df["Partida_fmt"] = pd.NA
+                
+                    return df
+                
+                # NORMALIZA AMBOS DF antes de usarlos
+                dfp_a = _standardize_partidas_df(dfp_a)
+                dfp_h = _standardize_partidas_df(dfp_h)
+
 
                 st.markdown("##### Comparativo de Montos por Partida")
 
@@ -1665,6 +1758,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
