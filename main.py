@@ -875,7 +875,7 @@ with subtabs[1]:
             ).fillna(0.0)
 
             # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
-            with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
+            with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
                 use_compact_amount = st.toggle(
                     "Usar formato compacto (K/M/B) en las barras",
                     value=True,
@@ -914,7 +914,7 @@ with subtabs[1]:
 
 
             # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico)
-            with st.expander("🔎 Filtros del Cronograma", expanded=True):
+            with st.expander("🔎 Filtros del Cronograma", expanded=False):
                 show_only_version_now = st.toggle(
                     "Mostrar solo versión 'Ahora'",
                     value=False,
@@ -1665,6 +1665,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
