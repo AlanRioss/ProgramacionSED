@@ -292,6 +292,52 @@ def _geojson_bounds(geojson: dict) -> tuple[float, float, float, float]:
         return (-103.0, 18.0, -96.0, 23.0)
     return (minx, miny, maxx, maxy)
 
+#====Helper para aplicar formato de ticks en ejes de tiempo (Plotly)====
+
+from dateutil.relativedelta import relativedelta
+
+def agregar_bandas_mensuales(fig, df, col_inicio="Fecha de Inicio", col_fin="Fecha de Termino",
+                             fill_rgba="rgba(0,0,0,0.04)"):
+    """
+    Agrega bandas verticales alternadas por mes al fondo del Gantt.
+    No toca el rango del eje X ni agrega grid denso.
+    """
+    if df.empty or col_inicio not in df or col_fin not in df:
+        return fig
+
+    x0 = pd.to_datetime(df[col_inicio], errors="coerce").min()
+    x1 = pd.to_datetime(df[col_fin],    errors="coerce").max()
+    if pd.isna(x0) or pd.isna(x1):
+        return fig
+
+    # Limites a inicios de mes y un mes extra al final para cubrir completamente
+    start = pd.Timestamp(x0.year, x0.month, 1)
+    end   = pd.Timestamp(x1.year, x1.month, 1) + relativedelta(months=1)
+
+    meses = pd.date_range(start, end, freq="MS")
+    if len(meses) <= 1:
+        return fig  # rango muy corto; nada que sombrear
+
+    shapes = list(getattr(fig.layout, "shapes", []))
+    toggle = False
+    for i in range(len(meses)-1):
+        if toggle:
+            shapes.append(dict(
+                type="rect",
+                xref="x", yref="paper",
+                x0=meses[i], x1=meses[i+1],
+                y0=0, y1=1,
+                fillcolor=fill_rgba,   # gris MUY sutil
+                line=dict(width=0),
+                layer="below"
+            ))
+        toggle = not toggle
+
+    fig.update_layout(shapes=shapes)
+    return fig
+
+
+
 # ========= FIN BLOQUE 1 =========
 # ========= BLOQUE 2 · SIDEBAR: CARGA Y FILTROS (Eje → Dependencia → Clave Q) =========
 
@@ -875,7 +921,7 @@ with subtabs[1]:
             ).fillna(0.0)
 
             # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
-            with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
+            with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
                 use_compact_amount = st.toggle(
                     "Usar formato compacto (K/M/B) en las barras",
                     value=True,
@@ -914,7 +960,7 @@ with subtabs[1]:
 
 
             # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico)
-            with st.expander("🔎 Filtros del Cronograma", expanded=False):
+            with st.expander("🔎 Filtros del Cronograma", expanded=True):
                 show_only_version_now = st.toggle(
                     "Mostrar solo versión 'Ahora'",
                     value=False,
@@ -960,16 +1006,36 @@ with subtabs[1]:
                     text="MontoLabel",
                     color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
                     title=f"Cronograma de Actividades / Hitos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
-                    custom_data=["Actividad_full", "Monto_full"]
+                    custom_data=["ID Meta", "Descripción", "Monto_val", "Fecha de Inicio", "Fecha de Termino"]
                 )
+
+
+
+                fig.update_xaxes(
+                    dtick="M1",            # un tick por mes (no usa pandas.date_range)
+                    tickformat="%b ’%y",   # Ene ’25, Feb ’25...
+                    showgrid=True,
+                             gridwidth=1,
+                             gridcolor="light gray",
+                             griddash="dot"                           
+                )
+
+                # 2) Bandas mensuales alternadas (solo meses, sin semanas ni trimestres)
+                fig = agregar_bandas_mensuales(fig, df_crono_plot,
+                                            col_inicio="Fecha de Inicio",
+                                            col_fin="Fecha de Termino",
+                                            fill_rgba="rgba(0,0,0,0.035)")
+
 
                 # Tooltip con descripción completa + monto completo
                 fig.update_traces(
                     hovertemplate=(
-                        "<b>%{customdata[0]}</b><br>"
-                        "Inicio: %{x|%d/%m/%Y}<br>"
-                        "Fin: %{x_end|%d/%m/%Y}<br>"
-                        "Monto: %{customdata[1]}<extra></extra>"
+                        "<b>ID Meta:</b> %{customdata[0]}<br>"
+                        "<b>Meta:</b> %{customdata[1]}<br>"
+                        "<b>Inicio:</b> %{customdata[3]|%d/%m/%Y}<br>"
+                        
+                        "<b>Monto:</b> $%{customdata[2]:,.2f} MXN"
+                        "<extra></extra>"
                     ),
                     texttemplate="%{text}",
                     textposition="inside",
@@ -979,12 +1045,19 @@ with subtabs[1]:
                     cliponaxis=False
                 )
 
+
                 fig.update_yaxes(
                     categoryorder="array",
                     categoryarray=orden_y,
                     autorange="reversed",
                     ticklabelposition="outside left",
-                    automargin=True
+                    automargin=True,
+                    title="",
+                    showgrid=True,
+                             gridwidth=1,
+                             gridcolor="light gray",
+                             griddash="solid",
+                    tickson="boundaries"          
                 )
 
                 fig.update_layout(
@@ -1391,6 +1464,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
