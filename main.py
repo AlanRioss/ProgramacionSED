@@ -336,6 +336,180 @@ def agregar_bandas_mensuales(fig, df, col_inicio="Fecha de Inicio", col_fin="Fec
     fig.update_layout(shapes=shapes)
     return fig
 
+# Normalización simple para comparar texto: minúsculas, trim y colapsar espacios
+def _norm_simple(s):
+    if pd.isna(s):
+        return ""
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _first_nonempty(series: pd.Series) -> str:
+    for v in series:
+        if pd.notna(v) and str(v).strip() != "":
+            return str(v)
+    return ""
+
+def _to_set(series: pd.Series) -> set:
+    if series is None:
+        return set()
+    vals = [str(x).strip() for x in series if pd.notna(x) and str(x).strip() != ""]
+    return set(vals)
+
+# Agrega la hoja "Sección de Metas" por ID Meta (o Clave de Meta si faltara)
+def _agregar_por_meta_simple(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # Llave principal y fallback
+    tiene_id = ("ID Meta" in df.columns) and df["ID Meta"].notna().any()
+    df["llave_meta"] = (df["ID Meta"] if tiene_id else df["Clave de Meta"]).astype(str)
+
+    # Asegurar columnas numéricas presentes (si no existen, crearlas en 0)
+    num_cols = [
+        "Cantidad Estatal","Monto Estatal",
+        "Cantidad Federal","Monto Federal",
+        "Cantidad Municipal","Monto Municipal",
+    ]
+    for c in num_cols:
+        if c not in df.columns:
+            df[c] = 0
+    for c in num_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+
+    g = df.groupby("llave_meta", dropna=False)
+
+    # Agregados simples
+    agg = {}
+    if "Descripción de la Meta" in df.columns:
+        agg["Descripción de la Meta"] = _first_nonempty
+    if "Unidad de Medida" in df.columns:
+        agg["Unidad de Medida"] = _first_nonempty
+    if "ID Meta" in df.columns:
+        agg["ID Meta"] = "first"
+    if "Clave de Meta" in df.columns:
+        agg["Clave de Meta"] = "first"
+    for c in num_cols:
+        agg[c] = "sum"
+
+    base = g.agg(agg)
+
+    # Sets
+    base["set_municipio"] = g["Municipio"].apply(_to_set) if "Municipio" in df.columns else g.size().apply(lambda _: set())
+    base["set_rp"]        = g["Registro Presupuestal"].apply(_to_set) if "Registro Presupuestal" in df.columns else g.size().apply(lambda _: set())
+
+    # Normalizados para comparación
+    base["desc_norm"] = base["Descripción de la Meta"].apply(_norm_simple) if "Descripción de la Meta" in base.columns else ""
+    base["um_norm"]   = base["Unidad de Medida"].apply(_norm_simple) if "Unidad de Medida" in base.columns else ""
+
+    base = base.reset_index()
+    return base
+
+def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame) -> pd.DataFrame:
+    A = _agregar_por_meta_simple(metas_antes)
+    H = _agregar_por_meta_simple(metas_ahora)
+
+    # Hacer merge outer por llave_meta
+    df = pd.merge(
+        A, H,
+        on="llave_meta", how="outer", suffixes=("_A", "_H")
+    )
+
+    # Normalizar columnas de conjuntos: NaN -> set()
+    for col in ["set_municipio_A", "set_municipio_H", "set_rp_A", "set_rp_H"]:
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: x if isinstance(x, set)
+                else (set() if pd.isna(x) else {str(x).strip()} if str(x).strip() else set())
+            )
+
+
+    # Flags de presencia
+    solo_ahora = df["llave_meta"].notna() & df["ID Meta_A"].isna() & df["ID Meta_H"].notna()
+    solo_antes = df["llave_meta"].notna() & df["ID Meta_A"].notna() & df["ID Meta_H"].isna()
+    en_ambas   = df["ID Meta_A"].notna() & df["ID Meta_H"].notna()
+
+    # -------- Comparaciones (estrictas) --------
+    # Texto
+    desc_changed = en_ambas & (df.get("desc_norm_A","") != df.get("desc_norm_H",""))
+    um_changed   = en_ambas & (df.get("um_norm_A","")   != df.get("um_norm_H",""))
+
+    # Sets
+    def _sets_changed(row, col):
+        a = row.get(col + "_A", set()) or set()
+        h = row.get(col + "_H", set()) or set()
+        return (a ^ h) != set()  # diferencia simétrica no vacía
+    muni_changed = df.apply(lambda r: _sets_changed(r, "set_municipio"), axis=1) & en_ambas
+    rp_changed   = df.apply(lambda r: _sets_changed(r, "set_rp"), axis=1) & en_ambas
+
+    # Numéricos por fuente
+    def _num_changed(col):
+        a = pd.to_numeric(df.get(col + "_A"), errors="coerce").fillna(0.0)
+        h = pd.to_numeric(df.get(col + "_H"), errors="coerce").fillna(0.0)
+        return en_ambas & (a != h)
+
+    c_est_changed = _num_changed("Cantidad Estatal")
+    m_est_changed = _num_changed("Monto Estatal")
+    c_fed_changed = _num_changed("Cantidad Federal")
+    m_fed_changed = _num_changed("Monto Federal")
+    c_mun_changed = _num_changed("Cantidad Municipal")
+    m_mun_changed = _num_changed("Monto Municipal")
+
+    # Estado por meta
+    estado = np.where(solo_ahora, "✚ Nueva",
+              np.where(solo_antes, "✖ Eliminada",
+              np.where(
+                  desc_changed | um_changed | muni_changed | rp_changed |
+                  c_est_changed | m_est_changed | c_fed_changed | m_fed_changed | c_mun_changed | m_mun_changed,
+                  "✎ Modificada", "✔ Sin cambios"
+              )))
+
+    # Identificador visible
+    id_visible = df["ID Meta_H"].fillna(df["ID Meta_A"])
+    clave_meta_vis = df.get("Clave de Meta_H", pd.Series(dtype=object)).fillna(df.get("Clave de Meta_A", ""))
+
+    # Δ total $ (solo para priorizar; suma de Montos Est/Fed/Mun)
+    montos_a = (
+        pd.to_numeric(df.get("Monto Estatal_A"), errors="coerce").fillna(0.0) +
+        pd.to_numeric(df.get("Monto Federal_A"), errors="coerce").fillna(0.0) +
+        pd.to_numeric(df.get("Monto Municipal_A"), errors="coerce").fillna(0.0)
+    )
+    montos_h = (
+        pd.to_numeric(df.get("Monto Estatal_H"), errors="coerce").fillna(0.0) +
+        pd.to_numeric(df.get("Monto Federal_H"), errors="coerce").fillna(0.0) +
+        pd.to_numeric(df.get("Monto Municipal_H"), errors="coerce").fillna(0.0)
+    )
+    delta_total = montos_h - montos_a
+
+    # Marcadores visuales ●/○
+    def mark(s): return np.where(s, "●", "○")
+
+    out = pd.DataFrame({
+        "Estado": estado,
+        "ID Meta": id_visible.astype(str),
+        "Clave de Meta": clave_meta_vis.astype(str),
+
+        "Desc": mark(desc_changed | solo_ahora | solo_antes),
+        "UM":   mark(um_changed   | solo_ahora | solo_antes),
+        "Municipios": mark(muni_changed | solo_ahora | solo_antes),
+        "RP":         mark(rp_changed   | solo_ahora | solo_antes),
+
+        "Cant. Est.": mark(c_est_changed | solo_ahora | solo_antes),
+        "Mto. Est.":  mark(m_est_changed | solo_ahora | solo_antes),
+        "Cant. Fed.": mark(c_fed_changed | solo_ahora | solo_antes),
+        "Mto. Fed.":  mark(m_fed_changed | solo_ahora | solo_antes),
+        "Cant. Mun.": mark(c_mun_changed | solo_ahora | solo_antes),
+        "Mto. Mun.":  mark(m_mun_changed | solo_ahora | solo_antes),
+
+        "Δ total $": delta_total
+    })
+
+    # Orden sugerido
+    cat = pd.CategoricalDtype(["✚ Nueva","✖ Eliminada","✎ Modificada","✔ Sin cambios"], ordered=True)
+    out["Estado"] = out["Estado"].astype(cat)
+    out = out.sort_values(["Estado","Δ total $"], ascending=[True, False]).reset_index(drop=True)
+
+    return out
+
 
 
 # ========= FIN BLOQUE 1 =========
@@ -624,6 +798,74 @@ with tabs[1]:
     if metas_ahora.empty:
         st.info("No hay datos de metas para esta Clave Q.")
         st.stop()
+
+    #========Controles de cambios======================
+    with st.expander("📊 Control de cambios – Metas (Información)", expanded=True):
+        ICONO_ESTADO = {
+        "✚ Nueva": "🗽 Nueva",
+        "✖ Eliminada": "🗑️ Eliminada",
+        "✎ Modificada": "🔄 Modificada",
+        "✔ Sin cambios": "🟰 Sin cambios",
+    }
+        ICONO_CAMBIO = {"●": "🚨", "○": "➖"}  # ● = cambió, ○ = no cambió
+
+
+        st.caption("Comparativo rápido a nivel proyecto (corte Antes vs Ahora).")
+
+        # 1) Construir comparativo base (no cambies esta llamada)
+        tabla_cc = construir_control_cambios_metas_info(metas_antes, metas_ahora)
+
+        # 2) Crear versión para mostrar (sin tocar los datos base)
+        tabla_show = tabla_cc.copy()
+
+        # 2.1) Reemplazar 'Estado' por icono SOLO para la vista  ✅ FIX
+        estado_str = tabla_show["Estado"].astype(str)  # quitar dtype categorical
+        tabla_show["Estado (icono)"] = estado_str.map(ICONO_ESTADO).fillna(estado_str)
+
+
+        # 2.2) Reemplazar marcadores de campos (●/○) por tus iconos (🚨 / ➖)  ✅ FIX
+        cols_campos = [
+            "Desc","UM","Municipios","RP",
+            "Cant. Est.","Mto. Est.","Cant. Fed.","Mto. Fed.","Cant. Mun.","Mto. Mun."
+        ]
+        for c in cols_campos:
+            if c in tabla_show.columns:
+                tabla_show[c] = tabla_show[c].astype(object).replace(ICONO_CAMBIO)
+
+
+        # 2.3) Formatear Δ total $ solo para mostrar (mantén numérico en tabla_cc)
+        if "Δ total $" in tabla_show.columns:
+            tabla_show["Δ total $"] = tabla_show["Δ total $"].apply(
+                lambda v: f"${v:,.0f}" if pd.notna(v) else "—"
+            )
+
+        # 3) Filtro rápido por Estado (usa las etiquetas internas, no los iconos)
+        estado_sel = st.multiselect(
+            "Filtrar por estado",
+            options=["✚ Nueva","✖ Eliminada","✎ Modificada","✔ Sin cambios"],
+            default=["✚ Nueva","✖ Eliminada","✎ Modificada","✔ Sin cambios"]
+        )
+        if estado_sel:
+            tabla_filtrada = tabla_show[tabla_show["Estado"].isin(estado_sel)].reset_index(drop=True)
+        else:
+            tabla_filtrada = tabla_show
+
+        # 4) Mostrar tabla (enseñamos la columna con icono)
+        columnas_vista = [
+            "Estado (icono)","ID Meta","Clave de Meta",
+            "Desc","UM","Municipios","RP",
+            "Cant. Est.","Mto. Est.","Cant. Fed.","Mto. Fed.","Cant. Mun.","Mto. Mun.",
+            "Δ total $"
+        ]
+        columnas_vista = [c for c in columnas_vista if c in tabla_filtrada.columns]  # por si faltara alguna
+
+        st.dataframe(
+            tabla_filtrada[columnas_vista],
+            use_container_width=True,
+            hide_index=True
+        )
+
+#=====FIN CONTROL DE CAMBIOS=====
 
     metas_disponibles = (
         metas_ahora[[META_COL, "Descripción de la Meta"]]
@@ -1464,6 +1706,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
