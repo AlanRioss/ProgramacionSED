@@ -995,7 +995,7 @@ with tabs[1]:
 
             df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
-            def _resaltar_cambios(row):
+           def _resaltar_cambios(row):
                 pares = []
                 for base in ["Estatal", "Federal", "Municipal"]:
                     for pref in ["Cantidad", "Monto"]:
@@ -1004,11 +1004,78 @@ with tabs[1]:
                             pares.append((a, h))
                 hay = any(abs(row[a] - row[h]) > 0 for a, h in pares if pd.notna(row[a]) and pd.notna(row[h]))
                 return [""] + (["background-color:#fff7e6"] * (len(row) - 1) if hay else [""] * (len(row) - 1))
+            
+            def _sombrear_antes(df: pd.DataFrame):
+                """Devuelve estilos de fondo gris claro para columnas que contienen '(Antes)'."""
+                styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                for c in df.columns:
+                    if "(Antes)" in c:
+                        styles[c] = "background-color:#f2f2f2"
+                return styles
 
             formato = {c: "${:,.2f}" for c in df_comp_mpio.columns if c.startswith("Monto ")}
             formato.update({c: "{:,.2f}" for c in df_comp_mpio.columns if c.startswith("Cantidad ")})
 
-            st.dataframe(df_comp_mpio.style.apply(_resaltar_cambios, axis=1).format(formato), use_container_width=True)
+            def _agregar_totales(df: pd.DataFrame, filtro_reg: str) -> pd.DataFrame:
+                if df.empty:
+                    return df
+
+                # Asegurar que columnas numéricas sean numéricas
+                num_cols = df.select_dtypes(include="number").columns.tolist()
+
+                filas = []
+
+                # --- Fila TOTAL (todas las filas)
+                totales = df[num_cols].sum(numeric_only=True)
+                fila_total = {col: totales.get(col, "") for col in df.columns}
+                fila_total["Municipio"] = "TOTAL"
+                filas.append(fila_total)
+
+                # --- Subtotales por Registro Presupuestal (solo si filtro = "Todos")
+                if filtro_reg == "Todos" and "Registro Presupuestal" in df_antes_meta.columns:
+                    for reg in ["Centralizado", "Descentralizado", "Sin Registro"]:
+                        mask = (
+                            (df_antes_meta["Registro Presupuestal"] == reg) |
+                            (df_ahora_meta["Registro Presupuestal"] == reg)
+                        )
+                        if mask.any():
+                            # extraemos municipios de ese grupo en comp
+                            municipios_reg = pd.concat([
+                                df_antes_meta.loc[df_antes_meta["Registro Presupuestal"] == reg, "Municipio"],
+                                df_ahora_meta.loc[df_ahora_meta["Registro Presupuestal"] == reg, "Municipio"]
+                            ]).unique()
+                            sub = df[df["Municipio"].isin(municipios_reg)]
+                            if not sub.empty:
+                                subtotales = sub[num_cols].sum(numeric_only=True)
+                                fila_sub = {col: subtotales.get(col, "") for col in df.columns}
+                                fila_sub["Municipio"] = f" ↘️ {reg}"
+                                filas.append(fila_sub)
+
+                # Concatenamos totales y la tabla original
+                df_out = pd.concat([pd.DataFrame(filas), df], ignore_index=True)
+                return df_out
+            
+            df_comp_mpio = _agregar_totales(df_comp_mpio, registro_opcion)
+            
+
+            def _estilo_totales(df: pd.DataFrame):
+                styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                for i, val in enumerate(df["Municipio"]):
+                    if str(val).startswith("TOTAL"):
+                        styles.iloc[i, :] = "font-weight:bold; background-color:#d9ead3"
+                    elif str(val).startswith(" ↘️ "):
+                        styles.iloc[i, :] = "font-weight:bold; background-color:#fce5cd"
+                return styles
+
+
+            st.dataframe(
+                df_comp_mpio.style
+                    .apply(_resaltar_cambios, axis=1)
+                    .apply(_sombrear_antes, axis=None)
+                    .apply(_estilo_totales, axis=None)
+                    .format(formato),
+                use_container_width=True
+            )
 
             # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
             with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
@@ -1426,7 +1493,7 @@ with subtabs[1]:
                 st.plotly_chart(fig_mes, use_container_width=True)
 
                 # ====== 2) Partidas por Actividad / Hito (unificada, con chip en descripción y filtro ≠ 0) ======
-                st.markdown("##### Partidas por Actividad / Hito (unificada)")
+                st.markdown("##### Partidas por Actividad ")
 
                 # Unir Antes/Ahora por Partida_fmt + Clave de Actividad/Hito
                 _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", "Descripción", "Monto Anual"]].copy()
@@ -1498,11 +1565,12 @@ with subtabs[1]:
 
                 # Columnas visibles
                 _tabla_unica = _unificada.rename(columns={
-                    "Partida": "Partida",  # ya renombrada arriba
+                    "Partida": "Partida",
+                      "Descripción": "Actividad (Cronograma)"  # ya renombrada arriba
                 })[[
                     "Partida",
                     "Descripción de la Partida",
-                    "Descripción",
+                    "Actividad (Cronograma)",
                     "Monto Anual (Antes)",
                     "Monto Anual (Ahora)",
                     "Diferencia",
@@ -1511,8 +1579,8 @@ with subtabs[1]:
                 # --- Filtro: mostrar solo filas con monto ≠ 0 en Antes o Ahora ---
                 _eps = 1e-9
                 _mask_nonzero = (_tabla_unica["Monto Anual (Antes)"].abs() > _eps) | (_tabla_unica["Monto Anual (Ahora)"].abs() > _eps)
-                _tabla_unica = _tabla_unica[_mask_nonzero].sort_values(["Partida", "Descripción"], kind="stable")
-
+                _tabla_unica = _tabla_unica[_mask_nonzero].sort_values(["Partida", "Actividad (Cronograma)"], kind="stable")
+                
                 def _bg_delta_cell(v):
                     if pd.isna(v):
                         return ""
@@ -1708,6 +1776,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
