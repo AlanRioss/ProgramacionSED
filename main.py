@@ -789,8 +789,8 @@ with tabs[0]:
             f'Clave Q: "{clave_q}"',
             f'Nombre del Proyecto: "{nombre_proyecto}"',
         ] + [f'{c}: "{fila_ahora.get(c, "")}"' for c in CAMPOS_TEXTO]
-      #  with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
-       #     st.code("\n".join(lineas), language="plaintext")
+        with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
+            st.code("\n".join(lineas), language="plaintext")
 
 
 # ---------------------- TAB 2: METAS (con subpestañas) ----------------------
@@ -801,7 +801,8 @@ with tabs[1]:
         st.info("No hay datos de metas para esta Clave Q.")
         st.stop()
 
-    #========Controles de cambios======================
+
+#========Controles de cambios======================
     with st.expander("📊 Control de cambios – Metas (Información)", expanded=True):
         ICONO_ESTADO = {
         "✚ Nueva": "🗽 Nueva",
@@ -868,6 +869,7 @@ with tabs[1]:
         )
 
 #=====FIN CONTROL DE CAMBIOS=====
+
 
     metas_disponibles = (
         metas_ahora[[META_COL, "Descripción de la Meta"]]
@@ -995,7 +997,7 @@ with tabs[1]:
 
             df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
-           def _resaltar_cambios(row):
+            def _resaltar_cambios(row):
                 pares = []
                 for base in ["Estatal", "Federal", "Municipal"]:
                     for pref in ["Cantidad", "Monto"]:
@@ -1077,6 +1079,7 @@ with tabs[1]:
                 use_container_width=True
             )
 
+            
             # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
             with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
                 col_opts1, col_opts2 = st.columns([1, 1])
@@ -1776,6 +1779,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
