@@ -1154,6 +1154,8 @@ with subtabs[1]:
             return out
 
         df_crono = _cronograma_df(metas_crono_antes, metas_crono_ahora, id_meta_sel)
+        
+        
         st.markdown("##### Detalle de Actividades / Hitos (Cronograma Actual)")
 
         if df_crono.empty:
@@ -1161,7 +1163,7 @@ with subtabs[1]:
         else:
             # === Tabla "Ahora" (vista rápida)
             columnas_tabla = [
-                "Clave de Actividad /Hito", "Fase Actividad / Hito", "Descripción",
+                "Clave de Actividad /Hito", "Fase Actividad / Hito", "Tipo", "Descripción",
                 "Fecha de Inicio", "Fecha de Termino", "Monto Actividad / Hito"
             ]
             tabla_actual = df_crono[df_crono["Versión"] == "Ahora"][columnas_tabla].sort_values("Clave de Actividad /Hito").copy()
@@ -1235,7 +1237,7 @@ with subtabs[1]:
             ).fillna(0.0)
 
             # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
-            with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
+            with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
                 use_compact_amount = st.toggle(
                     "Usar formato compacto (K/M/B) en las barras",
                     value=True,
@@ -1293,6 +1295,12 @@ with subtabs[1]:
 
             # Dataset a graficar aplicando filtros
             df_crono_plot = df_crono.copy()
+            for c in ["Fecha de Inicio", "Fecha de Termino"]:
+                df_crono_plot[c] = pd.to_datetime(df_crono_plot[c], dayfirst=True, errors="coerce")
+
+            # Si alguna fila no tiene fin, opcionalmente ocúltala del hover:
+            df_crono_plot["FechaTermino_safe"] = df_crono_plot["Fecha de Termino"].fillna(df_crono_plot["Fecha de Inicio"])
+
             if show_only_version_now:
                 df_crono_plot = df_crono_plot[df_crono_plot["Versión"] == "Ahora"]
             if only_nonzero_amounts:
@@ -1320,7 +1328,7 @@ with subtabs[1]:
                     text="MontoLabel",
                     color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
                     title=f"Cronograma de Actividades / Hitos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
-                    custom_data=["ID Meta", "Descripción", "Monto_val", "Fecha de Inicio", "Fecha de Termino"]
+                    custom_data=["Tipo","Descripción","Monto_val","Fecha de Inicio","FechaTermino_safe"]
                 )
 
 
@@ -1343,13 +1351,13 @@ with subtabs[1]:
 
                 # Tooltip con descripción completa + monto completo
                 fig.update_traces(
-                    hovertemplate=(
-                        "<b>ID Meta:</b> %{customdata[0]}<br>"
-                        "<b>Meta:</b> %{customdata[1]}<br>"
-                        "<b>Inicio:</b> %{customdata[3]|%d/%m/%Y}<br>"
-                        
-                        "<b>Monto:</b> $%{customdata[2]:,.2f} MXN"
-                        "<extra></extra>"
+                hovertemplate=(
+                    "<b>Tipo:</b> %{customdata[0]}<br>"
+                    "<b>Descripción:</b> %{customdata[1]}<br>"
+                    "<b>Inicio:</b> %{customdata[3]|%d/%m/%Y}<br>"
+                    "<b>Fin:</b> %{customdata[4]|%d/%m/%Y}<br>"
+                    "<b>Monto:</b> $%{customdata[2]:,.2f} MXN"
+                    "<extra></extra>"
                     ),
                     texttemplate="%{text}",
                     textposition="inside",
@@ -1382,7 +1390,6 @@ with subtabs[1]:
                 st.plotly_chart(fig, use_container_width=True)
 
             # Fin del cronograma
-
 
                 # ---------- Partidas ----------
                 @st.cache_data(show_spinner=False)
@@ -1779,6 +1786,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
