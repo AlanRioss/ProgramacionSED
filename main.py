@@ -995,30 +995,30 @@ with tabs[1]:
 
             df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
-               def _resaltar_cambios(row):
-                    pares = []
-                    for base in ["Estatal", "Federal", "Municipal"]:
-                        for pref in ["Cantidad", "Monto"]:
-                            a, h = f"{pref} {base} (Antes)", f"{pref} {base} (Ahora)"
-                            if a in row.index and h in row.index:
-                                pares.append((a, h))
-                    hay = any(abs(row[a] - row[h]) > 0 for a, h in pares if pd.notna(row[a]) and pd.notna(row[h]))
-                    return [""] + (["background-color:#fff7e6"] * (len(row) - 1) if hay else [""] * (len(row) - 1))
-                
-                def _sombrear_antes(df: pd.DataFrame):
-                    """Devuelve estilos de fondo gris claro para columnas que contienen '(Antes)'."""
-                    styles = pd.DataFrame("", index=df.index, columns=df.columns)
-                    for c in df.columns:
-                        if "(Antes)" in c:
-                            styles[c] = "background-color:#f2f2f2"
-                    return styles
-    
-                formato = {c: "${:,.2f}" for c in df_comp_mpio.columns if c.startswith("Monto ")}
-                formato.update({c: "{:,.2f}" for c in df_comp_mpio.columns if c.startswith("Cantidad ")})
-    
-                def _agregar_totales(df: pd.DataFrame, filtro_reg: str) -> pd.DataFrame:
-                    if df.empty:
-                        return df
+           def _resaltar_cambios(row):
+                pares = []
+                for base in ["Estatal", "Federal", "Municipal"]:
+                    for pref in ["Cantidad", "Monto"]:
+                        a, h = f"{pref} {base} (Antes)", f"{pref} {base} (Ahora)"
+                        if a in row.index and h in row.index:
+                            pares.append((a, h))
+                hay = any(abs(row[a] - row[h]) > 0 for a, h in pares if pd.notna(row[a]) and pd.notna(row[h]))
+                return [""] + (["background-color:#fff7e6"] * (len(row) - 1) if hay else [""] * (len(row) - 1))
+            
+            def _sombrear_antes(df: pd.DataFrame):
+                """Devuelve estilos de fondo gris claro para columnas que contienen '(Antes)'."""
+                styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                for c in df.columns:
+                    if "(Antes)" in c:
+                        styles[c] = "background-color:#f2f2f2"
+                return styles
+
+            formato = {c: "${:,.2f}" for c in df_comp_mpio.columns if c.startswith("Monto ")}
+            formato.update({c: "{:,.2f}" for c in df_comp_mpio.columns if c.startswith("Cantidad ")})
+
+            def _agregar_totales(df: pd.DataFrame, filtro_reg: str) -> pd.DataFrame:
+                if df.empty:
+                    return df
 
                 # Asegurar que columnas numéricas sean numéricas
                 num_cols = df.select_dtypes(include="number").columns.tolist()
@@ -1776,6 +1776,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
