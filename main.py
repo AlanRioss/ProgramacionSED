@@ -1851,9 +1851,11 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("👥 Beneficiarios")
 
+    # Si no hay datos, solo aviso
     if ("beneficiarios_df" not in locals()) or beneficiarios_df is None or beneficiarios_df.empty:
         st.info("Carga ambos cortes de **Detalle de Qs 2** en el panel lateral y selecciona una **Clave Q** para visualizar esta sección.")
     else:
+        # Split por versión
         ben_a = beneficiarios_df[beneficiarios_df["Versión"] == "Antes"].copy()
         ben_h = beneficiarios_df[beneficiarios_df["Versión"] == "Ahora"].copy()
 
@@ -1910,28 +1912,17 @@ with tabs[2]:
         st.markdown("""
         <style>
         .section-title { font-weight:700; font-size:1.05rem; margin: 6px 0 12px 0; display:flex; align-items:center; gap:.4rem; }
-        .card {
-        border: 1px solid #e6e7eb; border-radius: 12px; padding: 12px 14px; background:#fafbfd; margin-bottom:12px;
-        }
-        .subbox {
-        border: 1px solid #ececec; border-radius: 10px; padding: 8px 10px; background:#fff;
-        }
-        .label {
-        font-size: .82rem; color:#475569; margin-bottom:6px; font-weight:600;
-        }
-        .kpi {
-        border:1px solid #e5e7eb; background:#ffffff; border-radius:10px; padding:10px 12px; text-align:center;
-        }
+        .card { border: 1px solid #e6e7eb; border-radius: 12px; padding: 12px 14px; background:#fafbfd; margin-bottom:12px; }
+        .label { font-size: .82rem; color:#475569; margin-bottom:6px; font-weight:600; }
+        .kpi { border:1px solid #e5e7eb; background:#ffffff; border-radius:10px; padding:10px 12px; text-align:center; }
         .kpi .caption { font-size:.78rem; color:#64748b; margin-bottom:4px; }
         .kpi .value { font-size:1.05rem; font-weight:700; color:#0f172a; }
-        .badge {
-        display:inline-block; border-radius:999px; padding:.15rem .6rem; font-size:.74rem; font-weight:600; border:1px solid #e5e7eb; background:#f8fafc; color:#334155;
-        }
+        .badge { display:inline-block; border-radius:999px; padding:.15rem .6rem; font-size:.74rem; font-weight:600; border:1px solid #e5e7eb; background:#f8fafc; color:#334155; }
         .diffbox { border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#ffffff; }
         </style>
         """, unsafe_allow_html=True)
 
-        def _texto_o_diff(titulo:str, txt_a:str, txt_h:str):
+        def _texto_o_diff(txt_a:str, txt_h:str):
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown(f"<span class='badge'>Antes</span>", unsafe_allow_html=True)
@@ -1956,7 +1947,7 @@ with tabs[2]:
             nom_a = _first_nonempty(ben_a.get(col_nombre, pd.Series([], dtype=object))) if not ben_a.empty else ""
             nom_h = _first_nonempty(ben_h.get(col_nombre, pd.Series([], dtype=object))) if not ben_h.empty else ""
             st.markdown(f"<div class='label'>Nombre</div>", unsafe_allow_html=True)
-            _texto_o_diff("Nombre", nom_a, nom_h)
+            _texto_o_diff(nom_a, nom_h)
 
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
@@ -1964,11 +1955,11 @@ with tabs[2]:
             car_a = _first_nonempty(ben_a.get(col_carac, pd.Series([], dtype=object))) if not ben_a.empty else ""
             car_h = _first_nonempty(ben_h.get(col_carac, pd.Series([], dtype=object))) if not ben_h.empty else ""
             st.markdown(f"<div class='label'>Características</div>", unsafe_allow_html=True)
-            _texto_o_diff("Características", car_a, car_h)
+            _texto_o_diff(car_a, car_h)
 
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-            # Cantidades (solo mostrar valores)
+            # Cantidades (solo valores)
             try:
                 q_a = float(pd.to_numeric(ben_a.get(col_cant, pd.Series([0])), errors="coerce").sum())
             except Exception:
@@ -1986,32 +1977,9 @@ with tabs[2]:
 
             st.markdown(f"</div>", unsafe_allow_html=True)  # /card
 
-
-            categorias = [
-                {"etq": "Beneficiarios Directos",
-                "nombre": "Nombre (Beneficiarios Directos)",
-                "carac": "Caracteristicas Generales (Beneficiarios Directos)",
-                "cant":  "Cantidad (Beneficiarios Directos)"},
-                {"etq": "Población Objetivo",
-                "nombre": "Nombre (Población Objetivo)",
-                "carac": "Caracteristicas Generales (Población Objetivo)",
-                "cant":  "Cantidad (Población Objetivo)"},
-                {"etq": "Población Universo",
-                "nombre": "Nombre (Población Universo)",
-                "carac": "Caracteristicas Generales (Población Universo)",
-                "cant":  "Cantidad (Población Universo)"},
-                {"etq": "Beneficiarios Indirectos",
-                "nombre": "Nombre (Beneficiarios Indirectos)",
-                "carac": "Caracteristicas Generales (Beneficiarios Indirectos)",
-                "cant":  "Cantidad (Beneficiarios Indirectos)"},
-            ]
-
-            ben_a = beneficiarios_df[beneficiarios_df["Versión"] == "Antes"].copy()
-            ben_h = beneficiarios_df[beneficiarios_df["Versión"] == "Ahora"].copy()
-
-            for c in categorias:
-                _render_categoria(c["etq"], c["nombre"], c["carac"], c["cant"], ben_a, ben_h)
-
+        # Render de todas las categorías
+        for c in categorias:
+            _render_categoria(c["etq"], c["nombre"], c["carac"], c["cant"], ben_a, ben_h)
 
 
 
@@ -2096,6 +2064,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
