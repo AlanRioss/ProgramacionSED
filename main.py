@@ -586,6 +586,111 @@ def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora:
 
     return out
 
+#=====================helper tooltip Cronograma==================================
+
+# === Tooltip Cronograma Dinámico y Compacto ===
+from manual_extractos import MANUAL
+
+_Q_PREFIX_MAP = {
+    "QA": "Obra",
+    "QB": "Subprograma – Obra",
+    "QC": "Accion",  # caso especial: mostrar TODOS los subprogramas Acción en columnas
+    "QD": "Subprograma – Acción/Investigación (con servicios)",
+}
+
+# Llaves EXACTAS como en MANUAL['metas']['cronograma']['tipos_proyecto']
+_ACCION_KEYS = [
+    "Subprograma – Acción (con apoyos)",
+    "Subprograma – Acción (con adquisiciones)",
+    "Subprograma – Acción/Investigación (con servicios)",
+]
+
+def inferir_tipo_desde_clave_q(clave_q: str) -> str:
+    if not clave_q:
+        return ""
+    pref = str(clave_q).strip().upper()[:2]
+    return _Q_PREFIX_MAP.get(pref, "")
+
+def _render_bullets(items: list[str]):
+    for it in items:
+        st.markdown(f"- {it}")
+
+def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_accion: int = 2):
+    """
+    Expander compacto. Para QC muestra todos los subprogramas de Acción en columnas.
+    Para QA/QB/QD muestra primero el bloque del tipo detectado y el resto como referencia.
+    """
+    if not manual_crono:
+        return
+
+    desc   = manual_crono.get("descripcion", "")
+    tipos  = manual_crono.get("tipos_proyecto", {}) or {}
+    buenas = manual_crono.get("buenas_practicas", [])
+    adv    = manual_crono.get("advertencias", [])
+    ref    = manual_crono.get("referencia", "")
+
+    tipo_base = inferir_tipo_desde_clave_q(clave_q)
+
+    # ===== estilos compactos (forzados) =====
+    st.markdown("""
+    <style>
+    .crono-tip { 
+        font-size:0.5rem !important;
+        line-height:1.25 !important;
+    }
+    .crono-tip p, .crono-tip ul, .crono-tip li, .crono-tip div, .crono-tip span, .crono-tip strong, .crono-tip em {
+        font-size:0.78rem !important;
+        line-height:1.25 !important;
+        margin-top:0.2rem; 
+        margin-bottom:0.2rem;
+    }
+    .crono-section{
+        background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;
+        padding:6px 10px; margin-bottom:6px;
+    }
+    .crono-title{ font-weight:700; margin:.25rem 0 .25rem 0; font-size:0.82rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.expander("ℹ️ Elementos de Cronograma (Guía rápida)", expanded=False):
+        st.markdown("<div class='crono-tip'>", unsafe_allow_html=True)
+
+        # Descripción general
+
+        if tipo_base == "Accion":
+            # QC: mostrar TODOS los subprogramas Acción en columnas
+            accion_existentes = [k for k in _ACCION_KEYS if k in tipos]
+            if accion_existentes:
+                st.markdown("<div class='crono-title'>Componentes mínimos para Subprograma – Acción:</div>", unsafe_allow_html=True)
+                n = len(accion_existentes)
+                cols = st.columns(min(max(1, columnas_accion), n))
+                for i, key in enumerate(accion_existentes):
+                    with cols[i % len(cols)]:
+                        st.markdown(f"<div class='crono-section'><strong>{key}</strong></div>", unsafe_allow_html=True)
+                        _render_bullets(tipos.get(key, []))
+                st.markdown("---")
+        else:
+            # Mostrar el bloque del tipo detectado (si existe)
+            if tipo_base and tipo_base in tipos:
+                st.markdown("<div class='crono-title'>Componentes sugeridos (según tipo de proyecto):</div>", unsafe_allow_html=True)
+                st.markdown("<div class='crono-section'>", unsafe_allow_html=True)
+                _render_bullets(tipos[tipo_base])
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Otros tipos como referencia (acordeones compactos)
+            otros = {k: v for k, v in tipos.items() if k != tipo_base}
+            if otros:
+                st.markdown("<div class='crono-title'>Otros tipos de referencia:</div>", unsafe_allow_html=True)
+                for k, items in otros.items():
+                    with st.expander(k, expanded=False):
+                        _render_bullets(items)
+
+        if ref:
+            st.caption(ref)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
 
 
 # ========= FIN BLOQUE 1 =========
@@ -1310,8 +1415,17 @@ with tabs[1]:
                 for fecha_col in ["Fecha de Inicio", "Fecha de Termino"]:
                     if fecha_col in tabla_actual.columns:
                         tabla_actual[fecha_col] = pd.to_datetime(tabla_actual[fecha_col], errors="coerce").dt.strftime("%d/%m/%Y")
+                
                 st.dataframe(tabla_actual, use_container_width=True)
-    
+
+                # Tooltip contextual dinámico por Clave Q (QA/QB/QC/QD)
+                try:
+                    manual_crono = MANUAL.get("metas", {}).get("cronograma", {})
+                    render_tooltip_cronograma_qaware(manual_crono, clave_q, columnas_accion=3)  # usa 2 o 3 columnas a tu gusto
+                except Exception:
+                    pass
+
+                
                 # === 1) Etiquetas truncadas + tooltip completo
                 MAX_LABEL_CHARS = 60  # ajusta si quieres más/menos compacto
     
@@ -1373,7 +1487,7 @@ with tabs[1]:
                 ).fillna(0.0)
     
                 # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
-                with st.expander("💬 Opciones de etiquetas de monto", expanded=True):
+                with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
                     use_compact_amount = st.toggle(
                         "Usar formato compacto (K/M/B) en las barras",
                         value=True,
@@ -2064,6 +2178,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
