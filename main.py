@@ -1678,7 +1678,7 @@ with tabs[1]:
     
                     st.markdown("##### Comparativo de Montos por Partida")
     
-                    # ====== 1) Distribución mensual (selector + gráfico) ======
+                     # ====== 1) Distribución mensual (selector + gráfico) ======
                     # Lista de partidas disponibles a partir de ambos cortes
                     partidas_disponibles = sorted(
                         pd.Index(
@@ -1688,30 +1688,48 @@ with tabs[1]:
                             ], ignore_index=True)
                         ).dropna().astype(str).unique().tolist()
                     )
-    
-                    partida_sel = st.radio(
-                        "Selecciona una partida para ver distribución mensual",
-                        ["Todas"] + partidas_disponibles,
-                        horizontal=True,
-                        key=f"radio_partida_{_fmt_id_meta(id_meta_sel)}"
+
+                    st.write("**Selecciona una o más partidas para ver su distribución mensual**")
+
+                    # Checkbox "Todas"
+                    col_all, = st.columns(1)
+                    todas_on = col_all.checkbox(
+                        "Todas",
+                        value=False,
+                        key=f"chk_todas_{_fmt_id_meta(id_meta_sel)}"
                     )
-    
-                    if partida_sel == "Todas":
-                        df_mes_a = dfp_a
-                        df_mes_h = dfp_h
+
+                    # Si "Todas" está activo, ignoramos el resto de checkboxes
+                    if todas_on:
+                        filtro_partidas = partidas_disponibles
                     else:
-                        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str) == partida_sel]
-                        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str) == partida_sel]
-    
+                        # Renderizamos checkboxes en filas/columnas para efecto "píldoras"
+                        # (ajusta n_cols según ancho; 4–6 suele verse bien)
+                        n_cols = 8
+                        seleccionadas = []
+                        for i, p in enumerate(partidas_disponibles):
+                            if i % n_cols == 0:
+                                cols = st.columns(n_cols)
+                            if cols[i % n_cols].checkbox(
+                                p,
+                                key=f"chk_{_fmt_id_meta(id_meta_sel)}_{p}"
+                            ):
+                                seleccionadas.append(p)
+                        filtro_partidas = seleccionadas if len(seleccionadas) > 0 else partidas_disponibles
+
+                    # Filtrado
+                    df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
+                    df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
+
                     meses_cols = [
                         "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
                         "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
                         "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
                     ]
-    
+
                     sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
                     sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
-    
+
                     df_mensual_sel = pd.DataFrame({
                         "Mes": [m.replace("Monto ", "") for m in meses_cols],
                         "Antes": sum_m_antes.values,
@@ -2178,6 +2196,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
