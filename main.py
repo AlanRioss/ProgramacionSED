@@ -1337,51 +1337,7 @@ with tabs[1]:
             # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
             with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
                 col_opts1, col_opts2 = st.columns([1, 1])
-                with col_opts1:
-                    zoom_start = st.slider("Zoom inicial", 6, 12, 8, 1, key=f"zoom_{_fmt_id_meta(id_meta_sel)}")
-                with col_opts2:
-                    mapa_height = st.slider("Alto del mapa (px)", 360, 800, 520, 40, key=f"height_{_fmt_id_meta(id_meta_sel)}")
-            
-                geojson_data = cargar_geometria_municipal("gtoSHP/mun_test_wgs.geojson")
-                minx, miny, maxx, maxy = _geojson_bounds(geojson_data)
-                center_lat = (miny + maxy) / 2
-                center_lon = (minx + maxx) / 2
-            
-                # Detectar el campo de nombre en las properties del primer feature
-                name_candidates = ["NOMGEO", "NOM_MUN", "MUNICIPIO", "NOMBRE", "name"]
-                example_props = (geojson_data.get("features") or [{}])[0].get("properties") or {}
-            
-                # 1) intenta alguno de los candidatos conocidos (que sea escalar legible)
-                name_col = next(
-                    (c for c in name_candidates if c in example_props and isinstance(example_props[c], (str, int, float))),
-                    None
-                )
-                # 2) si no hay, toma el primer campo escalar que encuentres
-                if not name_col:
-                    for k, v in example_props.items():
-                        if isinstance(v, (str, int, float)):
-                            name_col = k
-                            break
-            
-                m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_start, tiles="CartoDB positron")
-            
-                # Construir tooltip SOLO si hay un campo válido
-                tooltip = folium.GeoJsonTooltip(
-                    fields=[name_col],
-                    aliases=["Municipio:"]
-                ) if name_col else None
-            
-                folium.GeoJson(
-                    geojson_data,
-                    tooltip=tooltip,  # None si no hay name_col -> Folium lo ignora y no rompe
-                    style_function=lambda f: {"color": "#555", "weight": 1, "fillColor": "#2b8cbe", "fillOpacity": 0.25},
-                    highlight_function=lambda f: {"weight": 2, "fillOpacity": 0.45}
-                ).add_to(m)
-            
-                # Enfocar a la extensión real
-                m.fit_bounds([[miny, minx], [maxy, maxx]])
-            
-                st_folium(m, use_container_width=True, height=mapa_height)
+               
 
 
 
@@ -2244,5 +2200,6 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
