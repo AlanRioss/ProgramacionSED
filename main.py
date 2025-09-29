@@ -2156,50 +2156,10 @@ def df_stats(df: pd.DataFrame) -> dict:
         mem = 0.0
     return {"filas": len(df), "columnas": len(df.columns), "mem_mb": mem}
 
-# --- Panel de control en sidebar ---
-with st.sidebar:
-    with st.expander("🧪 Diagnóstico & rendimiento", expanded=False):
-        st.session_state["_perf_on"] = st.toggle("Activar logging de rendimiento", value=st.session_state["_perf_on"])
-        if st.button("🧹 Limpiar caché de datos"):
-            st.cache_data.clear()
-            st.success("Caché de datos limpiada.")
-        if st.button("🗑️ Borrar logs de rendimiento"):
-            st.session_state["_perf_logs"].clear()
-            st.success("Logs de rendimiento borrados.")
 
-# --- Resumen rápido de dataframes filtrados por Clave Q ---
-with st.expander("📊 Resumen técnico de dataframes (filtrados por Clave Q)"):
-    resumen = []
-    resumen.append(("datos_antes",    df_stats(datos_antes)))
-    resumen.append(("datos_ahora",    df_stats(datos_ahora)))
-    resumen.append(("metas_antes",    df_stats(metas_antes)))
-    resumen.append(("metas_ahora",    df_stats(metas_ahora)))
-    resumen.append(("metas_crono_antes", df_stats(metas_crono_antes)))
-    resumen.append(("metas_crono_ahora", df_stats(metas_crono_ahora)))
-    resumen.append(("metas_partidas_antes", df_stats(metas_partidas_antes)))
-    resumen.append(("metas_partidas_ahora", df_stats(metas_partidas_ahora)))
-    resumen.append(("cumplimiento_antes", df_stats(cumplimiento_antes)))
-    resumen.append(("cumplimiento_ahora", df_stats(cumplimiento_ahora)))
-
-    df_resumen = pd.DataFrame(
-        [(nombre, info["filas"], info["columnas"], round(info["mem_mb"], 3)) for nombre, info in resumen],
-        columns=["DataFrame", "Filas", "Columnas", "Memoria (MB)"]
-    )
-    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
-
-# --- Visualizar logs de rendimiento, si existen ---
-if st.session_state["_perf_logs"]:
-    with st.expander("⏱️ Logs de rendimiento (secciones instrumentadas)"):
-        df_logs = pd.DataFrame(st.session_state["_perf_logs"], columns=["Sección", "Segundos"])
-        df_logs["Segundos"] = df_logs["Segundos"].map(lambda x: round(x, 4))
-        st.dataframe(df_logs, use_container_width=True, hide_index=True)
-        st.caption("Sugerencia: rodea bloques costosos con `with perf_timer('nombre_de_bloque'):` para registrarlos aquí.")
-
-# === Ejemplo de uso de perf_timer (opcional): ===
-# with perf_timer("cálculo_municipal"):
-#     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
