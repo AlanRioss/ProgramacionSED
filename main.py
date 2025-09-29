@@ -1030,13 +1030,7 @@ with tabs[0]:
                     st.markdown("Ahora:")
                     st.write(val_h)
 
-        # Texto estructurado para copiar
-        lineas = [
-            f'Clave Q: "{clave_q}"',
-            f'Nombre del Proyecto: "{nombre_proyecto}"',
-        ] + [f'{c}: "{fila_ahora.get(c, "")}"' for c in CAMPOS_TEXTO]
-        with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
-            st.code("\n".join(lineas), language="plaintext")
+
 
 
 # ---------------------- TAB 2: METAS (con subpestañas) ----------------------
@@ -2159,6 +2153,7 @@ def df_stats(df: pd.DataFrame) -> dict:
 
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
