@@ -245,10 +245,10 @@ def agregar_totales(df: pd.DataFrame) -> pd.DataFrame:
     out["Monto Total"] = out.filter(like="Monto").sum(axis=1, skipna=True)
     return out
 
-@st.cache_data(show_spinner=False)
-def cargar_shapefile_rds() -> gpd.GeoDataFrame:
-    """Carga shapefile municipal una sola vez y lo proyecta a WGS84."""
-    return gpd.read_file("app/gtoSHP/mun_test_wgs.shp").to_crs(4326)
+#@st.cache_data(show_spinner=False)
+#def cargar_shapefile_rds() -> gpd.GeoDataFrame:
+#    """Carga shapefile municipal una sola vez y lo proyecta a WGS84."""
+#    return gpd.read_file("app/gtoSHP/mun_test_wgs.shp").to_crs(4326)
 
 @st.cache_data(show_spinner=False)
 def _prep_beneficiarios_unificado(ben_antes: pd.DataFrame, ben_ahora: pd.DataFrame) -> pd.DataFrame:
@@ -2244,4 +2244,5 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
