@@ -6,11 +6,12 @@ import plotly.express as px
 import difflib
 import unicodedata
 import html
-import json
+import geopandas as gpd
 import folium
 from streamlit_folium import st_folium
 import numpy as np
 import re
+
 
 from manual_extractos import MANUAL  # ← se mantiene
 
@@ -111,6 +112,8 @@ hr{ border:none; height:1px; background:linear-gradient(90deg,#e5e7eb,transparen
 .chip--lock{ background:#fdecea; color:#b71c1c; }
 </style>
 """, unsafe_allow_html=True)
+
+
 
 # ========= Funciones de UI (tooltips) =========
 def titulo_con_tooltip(titulo: str, seccion: str, manual_key: str | None = None):
@@ -242,57 +245,10 @@ def agregar_totales(df: pd.DataFrame) -> pd.DataFrame:
     out["Monto Total"] = out.filter(like="Monto").sum(axis=1, skipna=True)
     return out
 
-from pathlib import Path
-
 @st.cache_data(show_spinner=False)
-def cargar_geometria_municipal(geojson_path: str | Path = "gtoSHP/mun_test_wgs.geojson") -> dict:
-    """
-    Carga el GeoJSON de municipios (EPSG:4326) desde rutas relativas seguras.
-    Devuelve el dict ya parseado.
-    """
-    base = Path(__file__).parent
-    candidates = [
-        base / geojson_path,
-        Path.cwd() / geojson_path,
-        base.parent / geojson_path,
-    ]
-    for p in candidates:
-        if p.is_file():
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-    raise FileNotFoundError(
-        f"No encontré {geojson_path}. Sube gtoSHP/mun_test_wgs.geojson al repo."
-    )
-
-def _geojson_bounds(geojson: dict) -> tuple[float, float, float, float]:
-    """
-    Calcula (minx, miny, maxx, maxy) recorriendo coordenadas del GeoJSON.
-    Soporta Polygon/MultiPolygon.
-    """
-    import math
-    minx = miny = math.inf
-    maxx = maxy = -math.inf
-
-    def _walk(coords):
-        nonlocal minx, miny, maxx, maxy
-        if isinstance(coords[0], (float, int)):  # [x, y]
-            x, y = coords[:2]
-            minx = min(minx, x); miny = min(miny, y)
-            maxx = max(maxx, x); maxy = max(maxy, y)
-        else:
-            for c in coords:
-                _walk(c)
-
-    for feat in geojson.get("features", []):
-        geom = feat.get("geometry") or {}
-        coords = geom.get("coordinates")
-        if coords:
-            _walk(coords)
-
-    if not all(map(math.isfinite, [minx, miny, maxx, maxy])):
-        # Fallback genérico
-        return (-103.0, 18.0, -96.0, 23.0)
-    return (minx, miny, maxx, maxy)
+def cargar_shapefile_rds() -> gpd.GeoDataFrame:
+    """Carga shapefile municipal una sola vez y lo proyecta a WGS84."""
+    return gpd.read_file("app/gtoSHP/mun_test_wgs.shp").to_crs(4326)
 
 @st.cache_data(show_spinner=False)
 def _prep_beneficiarios_unificado(ben_antes: pd.DataFrame, ben_ahora: pd.DataFrame) -> pd.DataFrame:
@@ -412,6 +368,7 @@ def agregar_bandas_mensuales(fig, df, col_inicio="Fecha de Inicio", col_fin="Fec
     fig.update_layout(shapes=shapes)
     return fig
 
+
 # Normalización simple para comparar texto: minúsculas, trim y colapsar espacios
 def _norm_simple(s):
     if pd.isna(s):
@@ -443,8 +400,8 @@ def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     # ✅ Llave única, sin fallback
     df["llave_meta"] = df[meta_key].astype(str)
 
-    # (Resto del código igual…)
-    # Asegurar cols numéricas presentes
+
+    # Asegurar columnas numéricas presentes (si no existen, crearlas en 0)
     num_cols = [
         "Cantidad Estatal","Monto Estatal",
         "Cantidad Federal","Monto Federal",
@@ -453,9 +410,12 @@ def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     for c in num_cols:
         if c not in df.columns:
             df[c] = 0
+    for c in num_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
 
     g = df.groupby("llave_meta", dropna=False)
+
+    # Agregados simples
     agg = {}
     if "Descripción de la Meta" in df.columns:
         agg["Descripción de la Meta"] = _first_nonempty
@@ -469,11 +429,17 @@ def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
         agg[c] = "sum"
 
     base = g.agg(agg)
+
+    # Sets
     base["set_municipio"] = g["Municipio"].apply(_to_set) if "Municipio" in df.columns else g.size().apply(lambda _: set())
     base["set_rp"]        = g["Registro Presupuestal"].apply(_to_set) if "Registro Presupuestal" in df.columns else g.size().apply(lambda _: set())
+
+    # Normalizados para comparación
     base["desc_norm"] = base["Descripción de la Meta"].apply(_norm_simple) if "Descripción de la Meta" in base.columns else ""
     base["um_norm"]   = base["Unidad de Medida"].apply(_norm_simple) if "Unidad de Medida" in base.columns else ""
-    return base.reset_index()
+
+    base = base.reset_index()
+    return base
 
 def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     A = _agregar_por_meta_simple(metas_antes, meta_key)
@@ -580,6 +546,7 @@ def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora:
     out = out.sort_values(["Estado","Δ total $"], ascending=[True, False]).reset_index(drop=True)
 
     return out
+
 
 #=====================helper tooltip Cronograma==================================
 
@@ -688,12 +655,16 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
 
 
 
+
+
+
 # ========= FIN BLOQUE 1 =========
 # ========= BLOQUE 2 · SIDEBAR: CARGA Y FILTROS (Eje → Dependencia → Clave Q) =========
 
-with st.sidebar:
-    st.title("⚙️ Configuración")
+#=====================CARGA DE REPORTES========================================
 
+with st.sidebar:
+    
     # --- Carga de archivos ---
     with st.expander("📤 Cargar Detalle de Qs", expanded=True):
         archivo_antes = st.file_uploader("Archivo - Corte Antes", type=["xlsx"], key="archivo_antes")
@@ -707,6 +678,7 @@ with st.sidebar:
             "Corte AHORA (Detalle de Qs 2)",
             type=["xlsx"], key="ben_ahora_file"
         )
+
 with st.sidebar:
     st.markdown("### 🔑 Llave para comparar metas")
     llave_opcion = st.radio(
@@ -715,7 +687,6 @@ with st.sidebar:
         horizontal=True,
         key="llave_meta_opcion"
     )
-
 
 
 # Columnas mínimas para poblar filtros
@@ -798,11 +769,14 @@ else:
     """)
     st.stop()
 
+
+
 # ========= FIN BLOQUE 2 =========
 # ========= BLOQUE 3 · CARGA DE HOJAS + LIMPIEZA + TOTALES + FILTRO POR CLAVE Q =========
 
 # Llave operativa de metas (según selección del usuario)
 META_COL = "ID Meta" if llave_opcion == "ID Meta" else "Clave de Meta"
+
 
 # ---- 3.1 Cargar Datos Generales (ambos cortes) ----
 COLUMNAS_DATOS_GENERALES = [
@@ -863,14 +837,17 @@ metas_partidas_ahora = metas_partidas_ahora[metas_partidas_ahora["Clave Q"] == c
 metas_partidas_antes = metas_partidas_antes[metas_partidas_antes["Clave Q"] == clave_q]
 
 # ---- 3.7 Cargar CUMPLIMIENTO (ambos cortes) con fallback suave a 'Clave de Meta' ----
-# Cargar Cumplimiento (pide ambas llaves para que estén disponibles)
+
+#      Nota: Pedimos también "Clave de Meta" en columnas por si la hoja aún no migra a ID Meta.
+
 COLUMNAS_CUMPLIMIENTO = (
-    ["ID Meta", "Clave de Meta", "Cantidad"] +
+    [META_COL, "Clave de Meta", "Cantidad"] +
     [f"Cumplimiento {mes}" for mes in [
-        "Enero","Febrero","Marzo","Abril","Mayo","Junio",
-        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     ]]
 )
+
 cumplimiento_ahora = cargar_hoja(archivo_ahora, "Sección de Metas-Cumplimiento", COLUMNAS_CUMPLIMIENTO).copy()
 cumplimiento_antes = cargar_hoja(archivo_antes, "Sección de Metas-Cumplimiento", COLUMNAS_CUMPLIMIENTO).copy()
 
@@ -879,6 +856,14 @@ if META_COL not in cumplimiento_ahora.columns or META_COL not in cumplimiento_an
     st.error(f"No se encontró la columna **{META_COL}** en la hoja 'Sección de Metas-Cumplimiento'. "
              f"Cambia la opción de llave o revisa el archivo.")
     st.stop()
+
+# Limpieza: eliminar filas sin ID Meta
+cumplimiento_ahora = cumplimiento_ahora.dropna(subset=[META_COL])
+cumplimiento_antes = cumplimiento_antes.dropna(subset=[META_COL])
+
+# (Opcional) Nombre del proyecto para encabezados posteriores
+nombre_proyecto_vals = datos_ahora["Nombre del Proyecto (Ejercicio Actual)"].values
+nombre_proyecto = nombre_proyecto_vals[0] if len(nombre_proyecto_vals) else ""
 
 
 # ---- 3.8 Cargar BENEFICIARIOS (ambos cortes) con cargar_hoja + filtro por Clave Q ----
@@ -953,6 +938,30 @@ col_proy2.metric(
 
 st.markdown("---")
 # ========= FIN BLOQUE 4 =========
+# ========= BLOQUE 5 · PESTAÑAS (procesamiento bajo demanda) =========
+
+# Encabezado con Clave Q y nombre del proyecto
+st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto}")
+
+# Monto total del proyecto (suma de 'Monto Total' en Sección de Metas)
+monto_total_antes = float(metas_antes["Monto Total"].sum()) if not metas_antes.empty else 0.0
+monto_total_ahora = float(metas_ahora["Monto Total"].sum()) if not metas_ahora.empty else 0.0
+diferencia_monto_total = monto_total_ahora - monto_total_antes
+
+st.markdown("### 💰 Monto Modificado del Proyecto")
+col_proy1, col_proy2 = st.columns(2)
+col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
+col_proy2.metric(
+    "Monto Total (Ahora)",
+    f"${monto_total_ahora:,.2f}",
+    delta=f"${diferencia_monto_total:,.2f}",
+    delta_color="normal"
+)
+
+st.markdown("---")
+# ========= FIN BLOQUE 4 =========
+
+
 # ========= BLOQUE 5 · PESTAÑAS (procesamiento bajo demanda) =========
 
 from catalogo_partidas import CATALOGO_PARTIDAS  # usado en subpestaña Partidas
@@ -1114,13 +1123,13 @@ with tabs[1]:
         .drop_duplicates()
         .copy()
     )
-    
+
     def _fmt_meta_val(x):
         return _fmt_id_meta(x) if META_COL == "ID Meta" else ("" if pd.isna(x) else str(x))
-    
+
     metas_disponibles["Etiqueta"] = metas_disponibles[META_COL].apply(_fmt_meta_val) + " - " + metas_disponibles["Descripción de la Meta"].astype(str)
     metas_disponibles = metas_disponibles.sort_values("Etiqueta")
-    
+
     id_meta_label = st.selectbox(
         "Selecciona una Meta",
         [""] + metas_disponibles["Etiqueta"].tolist(),
@@ -1151,7 +1160,7 @@ with tabs[1]:
                 f_ahora = df_ahora[df_ahora[meta_key].apply(_norm) == meta_val]
                 f_antes = df_antes[df_antes[meta_key].apply(_norm) == meta_val]
                 return f_antes.copy(), f_ahora.copy()
-            
+
             df_antes_meta, df_ahora_meta = _info_meta(metas_antes, metas_ahora, META_COL, id_meta_sel)
 
             # --- Comparativos cualitativos (Descripción / Unidad de Medida)
@@ -1323,6 +1332,7 @@ with tabs[1]:
                 use_container_width=True
             )
 
+
             
             # --- Mapa municipal usando GeoJSON (robusto ante ausencia de campo de nombre) ---
             with st.expander("🗺️ Mapa municipal (En Desarrollo)", expanded=False):
@@ -1375,7 +1385,7 @@ with tabs[1]:
 
 
 
-    # ================== SUBTAB 2: Cronograma y Partidas ==================
+   # ================== SUBTAB 2: Cronograma y Partidas ==================
     with subtabs[1]:
         if not id_meta_sel:
             st.info("Selecciona una Meta (ID) para ver Cronograma y Partidas.")
@@ -1395,12 +1405,12 @@ with tabs[1]:
                 mismo_dia = (out["Fecha de Inicio"] == out["Fecha de Termino"])
                 out.loc[mismo_dia, "Fecha de Termino"] = out.loc[mismo_dia, "Fecha de Termino"] + pd.Timedelta(days=1)
                 return out
-            
+
             df_crono = _cronograma_df(metas_crono_antes, metas_crono_ahora, META_COL, id_meta_sel)
-                        
+            
             
             st.markdown("##### Detalle de Actividades / Hitos (Cronograma Actual)")
-    
+
             if df_crono.empty:
                 st.info("No se encontraron actividades o hitos para esta meta en ninguna de las versiones.")
             else:
@@ -1418,19 +1428,24 @@ with tabs[1]:
                     if fecha_col in tabla_actual.columns:
                         tabla_actual[fecha_col] = pd.to_datetime(tabla_actual[fecha_col], errors="coerce").dt.strftime("%d/%m/%Y")
                 
+                
                 st.dataframe(tabla_actual, use_container_width=True)
 
+
                 # Tooltip contextual dinámico por Clave Q (QA/QB/QC/QD)
+                
+
+
                 try:
                     manual_crono = MANUAL.get("metas", {}).get("cronograma", {})
                     render_tooltip_cronograma_qaware(manual_crono, clave_q, columnas_accion=3)  # usa 2 o 3 columnas a tu gusto
                 except Exception:
                     pass
 
-                
+
                 # === 1) Etiquetas truncadas + tooltip completo
                 MAX_LABEL_CHARS = 60  # ajusta si quieres más/menos compacto
-    
+
                 def _shorten(s: str, n: int) -> str:
                     if not isinstance(s, str):
                         return ""
@@ -1441,7 +1456,7 @@ with tabs[1]:
                     if len(corte) < int(0.6 * n):  # si quedó muy corto, corta duro
                         corte = s[:n]
                     return corte + "…"
-    
+
                 # Formateador compacto de monto (K/M/B)
                 def _humanize_currency(x):
                     if pd.isna(x):
@@ -1458,7 +1473,7 @@ with tabs[1]:
                     elif a >= 1_000:
                         return f"${v/1_000:.0f}K"
                     return f"${v:,.0f}"
-    
+
                 df_crono = df_crono.copy()
                 df_crono["DescCorta"] = df_crono["Descripción"].astype(str).map(lambda s: _shorten(s, MAX_LABEL_CHARS))
                 df_crono["EtiquetaY"] = (
@@ -1470,24 +1485,24 @@ with tabs[1]:
                     df_crono["Clave de Actividad /Hito"].astype(str) + " - " +
                     df_crono["Descripción"].astype(str) + " (" + df_crono["Versión"] + ")"
                 )
-    
+
                 # Monto completo (tooltip) y compacto (etiqueta en barra)
                 df_crono["Monto_full"] = df_crono.get("Monto Actividad / Hito", pd.Series([None]*len(df_crono))).map(
                     lambda x: f"${x:,.2f}" if pd.notna(x) else "—"
                 )
                 df_crono["Monto_compact"] = df_crono.get("Monto Actividad / Hito", pd.Series([None]*len(df_crono))).map(_humanize_currency)
-    
+
                 # Duración (para decidir si ocultar etiqueta en barras cortas)
                 df_crono["DuracionDias"] = (df_crono["Fecha de Termino"] - df_crono["Fecha de Inicio"]).dt.days
-    
+
                 # === Etiquetas de monto (UI existente) + regla fija: solo mostrar si monto ≠ 0 ===
-    
+
                 # 1) Asegura columna numérica ANTES de construir la etiqueta (para la regla fija)
                 df_crono["Monto_val"] = pd.to_numeric(
                     df_crono.get("Monto Actividad / Hito", pd.Series([None]*len(df_crono))),
                     errors="coerce"
                 ).fillna(0.0)
-    
+
                 # 2) Mantén tus opciones actuales en el expander (SIN añadir toggle para ≠ 0)
                 with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
                     use_compact_amount = st.toggle(
@@ -1511,7 +1526,7 @@ with tabs[1]:
                         help="Si la duración (Fin-Inicio) es menor a este umbral, se oculta la etiqueta.",
                         disabled=not hide_on_short_bars
                     )
-    
+
                 # 3) Construcción de la etiqueta con la REGLA FIJA: no mostrar si monto == 0
                 def _pick_label(row):
                     # Regla fija (sin UI): solo etiquetar montos distintos de cero
@@ -1523,11 +1538,11 @@ with tabs[1]:
                     if show_only_now and row.get("Versión") != "Ahora":
                         return ""
                     return row["Monto_compact"] if use_compact_amount else row["Monto_full"]
-    
+
                 df_crono["MontoLabel"] = df_crono.apply(_pick_label, axis=1)
-    
-    
-                # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico)
+
+
+                # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico) + ORDEN DEL EJE Y
                 with st.expander("🔎 Filtros del Cronograma", expanded=True):
                     show_only_version_now = st.toggle(
                         "Mostrar solo versión 'Ahora'",
@@ -1539,37 +1554,66 @@ with tabs[1]:
                         value=False,
                         help="Oculta barras con monto 0 o sin monto."
                     )
-    
+
+                    # --- NUEVO: orden del eje Y
+                    modo_orden_y = st.radio(
+                        "Ordenar actividades en el eje Y por:",
+                        options=["Por ID de actividad", "Por fecha de inicio (antiguas arriba)"],
+                        index=0,
+                        horizontal=True,
+                        key=f"orden_y_{_fmt_id_meta(id_meta_sel)}"
+                    )
+                    
+
                 df_crono["Monto_val"] = pd.to_numeric(
                     df_crono.get("Monto Actividad / Hito", pd.Series([None]*len(df_crono))),
                     errors="coerce"
                 ).fillna(0.0)
-    
+
                 # Dataset a graficar aplicando filtros
                 df_crono_plot = df_crono.copy()
                 for c in ["Fecha de Inicio", "Fecha de Termino"]:
                     df_crono_plot[c] = pd.to_datetime(df_crono_plot[c], dayfirst=True, errors="coerce")
-    
+
                 # Si alguna fila no tiene fin, opcionalmente ocúltala del hover:
                 df_crono_plot["FechaTermino_safe"] = df_crono_plot["Fecha de Termino"].fillna(df_crono_plot["Fecha de Inicio"])
-    
+
                 if show_only_version_now:
                     df_crono_plot = df_crono_plot[df_crono_plot["Versión"] == "Ahora"]
                 if only_nonzero_amounts:
                     df_crono_plot = df_crono_plot[df_crono_plot["Monto_val"].abs() > 0]
-    
+
                 if df_crono_plot.empty:
                     st.info("No hay actividades/hitos para los filtros actuales.")
                 else:
-                    # Orden del eje Y por clave numérica (sobre dataset a graficar)
-                    orden_y = df_crono_plot.sort_values("Clave Num")["EtiquetaY"].tolist()
-    
+                    # === Construcción del orden del eje Y según la opción elegida
+                    if modo_orden_y == "Por ID de actividad":
+                        # Orden por clave numérica (como antes)
+                        orden_y = (
+                            df_crono_plot
+                            .sort_values(["Clave Num", "Versión"], kind="stable")
+                            ["EtiquetaY"].tolist()
+                        )
+                    else:
+                        # Orden por fecha de inicio (antiguas arriba)
+                        base_orden = df_crono_plot.copy()
+                        base_orden["Inicio"] = pd.to_datetime(base_orden["Fecha de Inicio"], errors="coerce")
+                        aux = (
+                            base_orden.groupby("EtiquetaY", as_index=False)["Inicio"].min()
+                            .assign(_orden=lambda d: d["Inicio"].fillna(pd.Timestamp.max))
+                            .sort_values("_orden", ascending=True, kind="stable")
+                        )
+                        orden_y = aux["EtiquetaY"].tolist()
+
                     # === Altura dinámica según número de filas (más filas -> más alto)
                     filas = df_crono_plot["EtiquetaY"].nunique()
                     ALTURA_BASE = 420
                     ALTURA_POR_FILA = 26
                     altura = max(ALTURA_BASE, ALTURA_POR_FILA * filas + 140)
-    
+
+
+
+
                     # ---------- Gráfico Gantt ----------
                     fig = px.timeline(
                         df_crono_plot,
@@ -1582,25 +1626,25 @@ with tabs[1]:
                         title=f"Cronograma de Actividades / Hitos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
                         custom_data=["Tipo","Descripción","Monto_val","Fecha de Inicio","FechaTermino_safe"]
                     )
-    
-    
-    
+
+
+
                     fig.update_xaxes(
                         dtick="M1",            # un tick por mes (no usa pandas.date_range)
                         tickformat="%b ’%y",   # Ene ’25, Feb ’25...
                         showgrid=True,
-                                 gridwidth=1,
-                                 gridcolor="light gray",
-                                 griddash="dot"                           
+                                gridwidth=1,
+                                gridcolor="light gray",
+                                griddash="dot"                           
                     )
-    
+
                     # 2) Bandas mensuales alternadas (solo meses, sin semanas ni trimestres)
                     fig = agregar_bandas_mensuales(fig, df_crono_plot,
                                                 col_inicio="Fecha de Inicio",
                                                 col_fin="Fecha de Termino",
                                                 fill_rgba="rgba(0,0,0,0.035)")
-    
-    
+
+
                     # Tooltip con descripción completa + monto completo
                     fig.update_traces(
                     hovertemplate=(
@@ -1611,15 +1655,18 @@ with tabs[1]:
                         "<b>Monto:</b> $%{customdata[2]:,.2f} MXN"
                         "<extra></extra>"
                         ),
-                        texttemplate="%{text}",
+                        #texttemplate="%{text}",
                         textposition="inside",
                         insidetextanchor="middle",
                         textfont_size=11,
                         textfont_color="white",
-                        cliponaxis=False
+                        cliponaxis=False,
+                        marker_line_width=0,
+                        texttemplate="<b>%{text}</b>",
+                        textfont=dict(size=11)
                     )
-    
-    
+
+
                     fig.update_yaxes(
                         categoryorder="array",
                         categoryarray=orden_y,
@@ -1628,21 +1675,22 @@ with tabs[1]:
                         automargin=True,
                         title="",
                         showgrid=True,
-                                 gridwidth=1,
-                                 gridcolor="light gray",
-                                 griddash="solid",
+                                gridwidth=1,
+                                gridcolor="light gray",
+                                griddash="solid",
                         tickson="boundaries"          
                     )
-    
+
                     fig.update_layout(
                         height=altura,
                         margin=dict(l=180, r=20, t=60, b=40)
                     )
-    
+
                     st.plotly_chart(fig, use_container_width=True)
-    
+
                 # Fin del cronograma
-    
+
+
                     # ---------- Partidas ----------
                     @st.cache_data(show_spinner=False)
                     def _partidas_resumen(pa: pd.DataFrame, ph: pd.DataFrame, id_meta_str: str):
@@ -1653,19 +1701,19 @@ with tabs[1]:
                         ]
                         a = pa[pa[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
                         h = ph[ph[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
-    
+
                         # Partida a 4 dígitos
                         for dfp in (a, h):
                             if "Partida" in dfp.columns:
                                 dfp["Partida_fmt"] = dfp["Partida"].apply(lambda x: str(int(float(x)))[:4] if pd.notnull(x) else None)
                         a = a[a["Partida_fmt"].notna()]
                         h = h[h["Partida_fmt"].notna()]
-    
+
                         res_h = h.groupby("Partida_fmt")["Monto Anual"].sum().reset_index().rename(columns={"Monto Anual": "Monto Anual (Ahora)"})
                         res_a = a.groupby("Partida_fmt")["Monto Anual"].sum().reset_index().rename(columns={"Monto Anual": "Monto Anual (Antes)"})
                         comp = pd.merge(res_a, res_h, on="Partida_fmt", how="outer").fillna(0)
                         comp["Diferencia"] = comp["Monto Anual (Ahora)"] - comp["Monto Anual (Antes)"]
-    
+
                         # Sumas mensuales (para gráfica)
                         sum_m_ahora = h[meses_cols].sum(numeric_only=True)
                         sum_m_antes = a[meses_cols].sum(numeric_only=True)
@@ -1675,12 +1723,13 @@ with tabs[1]:
                             "Ahora": sum_m_ahora.values
                         })
                         return comp, df_mensual, a, h
-    
+
                     df_comp_part, df_mensual, dfp_a, dfp_h = _partidas_resumen(metas_partidas_antes, metas_partidas_ahora, id_meta_sel)
-    
+
                     st.markdown("##### Comparativo de Montos por Partida")
-    
-                     # ====== 1) Distribución mensual (selector + gráfico) ======
+
+                   
+                    # ====== 1) Distribución mensual (selector + gráfico) ======
                     # Lista de partidas disponibles a partir de ambos cortes
                     partidas_disponibles = sorted(
                         pd.Index(
@@ -1737,7 +1786,8 @@ with tabs[1]:
                         "Antes": sum_m_antes.values,
                         "Ahora": sum_m_ahora.values
                     })
-    
+
+
                     # --- Gráfico mensual con etiquetas SOLO en "Ahora" (K/M/B y sin ceros) ---
                     def _humanize_kmb(x):
                         if pd.isna(x): return ""
@@ -1749,9 +1799,9 @@ with tabs[1]:
                         if a >= 1_000_000:     return f"${v/1_000_000:.2f}M"
                         if a >= 1_000:         return f"${v/1_000:.0f}K"
                         return f"${v:,.0f}"
-    
+
                     labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
-    
+
                     fig_mes = px.bar(
                         df_mensual_sel,
                         x="Mes",
@@ -1761,58 +1811,58 @@ with tabs[1]:
                         labels={"value": "Monto", "variable": "Versión"},
                         color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"}
                     )
-    
+
                     def _apply_text_to_ahora(trace):
                         if trace.name == "Ahora":
                             trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
                         else:
                             trace.update(text=None)
-    
+
                     fig_mes.for_each_trace(_apply_text_to_ahora)
                     fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
                     st.plotly_chart(fig_mes, use_container_width=True)
-    
+
                     # ====== 2) Partidas por Actividad / Hito (unificada, con chip en descripción y filtro ≠ 0) ======
                     st.markdown("##### Partidas por Actividad ")
-    
+
                     # Unir Antes/Ahora por Partida_fmt + Clave de Actividad/Hito
                     _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", "Descripción", "Monto Anual"]].copy()
                     _det_h = dfp_h[["Partida_fmt", "Clave de Actividad /Hito", "Descripción", "Monto Anual"]].copy()
                     _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
                     _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
-    
+
                     _unificada = pd.merge(_det_a, _det_h, on=["Partida_fmt", "Clave de Actividad /Hito"], how="outer")
-    
+
                     # Descripción preferente: Ahora > Antes
                     _unificada["Descripción"] = _unificada["Desc_H"].combine_first(_unificada["Desc_A"])
-    
+
                     # Números + diferencia
                     for c in ["Monto Anual (Antes)", "Monto Anual (Ahora)"]:
                         _unificada[c] = pd.to_numeric(_unificada[c], errors="coerce").fillna(0.0)
                     _unificada["Diferencia"] = _unificada["Monto Anual (Ahora)"] - _unificada["Monto Anual (Antes)"]
-    
+
                     # --- Join catálogo (robusto) para descripción, restringida y validador
                     def _pick_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
                         for c in candidates:
                             if c in df.columns:
                                 return c
                         return None
-    
+
                     desc_candidates  = ["Definición", "Definicion", "Descripción", "Descripcion",
                                         "Descripción de la Partida", "Descripcion de la Partida",
                                         "Desc Partida", "Descripcion Partida"]
                     restr_candidates = ["Restringida", "Restringido", "Restriccion", "Restricción"]
                     valid_candidates = ["Validador", "Validador Partida", "Validador_Partida"]
-    
+
                     desc_col  = _pick_col(CATALOGO_PARTIDAS, desc_candidates)
                     restr_col = _pick_col(CATALOGO_PARTIDAS, restr_candidates)
                     valid_col = _pick_col(CATALOGO_PARTIDAS, valid_candidates)
-    
+
                     cat_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
                     _catalogo = CATALOGO_PARTIDAS[cat_cols].drop_duplicates().copy() if cat_cols else pd.DataFrame(columns=["Partida_fmt"])
-    
+
                     _unificada = _unificada.merge(_catalogo, on="Partida_fmt", how="left")
-    
+
                     # Renombres y defaults
                     rename_map = {"Partida_fmt": "Partida"}
                     if desc_col:  rename_map[desc_col]  = "Descripción de la Partida"
@@ -1822,7 +1872,7 @@ with tabs[1]:
                     if "Descripción de la Partida" not in _unificada.columns: _unificada["Descripción de la Partida"] = ""
                     if "Restringida" not in _unificada.columns:               _unificada["Restringida"] = False
                     if "Validador" not in _unificada.columns:                 _unificada["Validador"] = ""
-    
+
                     # --- CHIP en "Descripción de la Partida" cuando esté restringida ---
                     import html as _html_mod  # para escapar texto
                     def _to_bool(v):
@@ -1831,7 +1881,7 @@ with tabs[1]:
                         if isinstance(v, (int, float)): return v != 0
                         s = str(v).strip().lower()
                         return s in {"true", "1", "sí", "si", "yes", "y"}
-    
+
                     def _desc_with_chip(row):
                         desc = _html_mod.escape(str(row.get("Descripción de la Partida", "") or ""))
                         if _to_bool(row.get("Restringida")):
@@ -1840,13 +1890,13 @@ with tabs[1]:
                                 return f"{desc} <span class='chip chip--lock'>🔒 {val}</span>"
                             return f"{desc} <span class='chip chip--lock'>🔒</span>"
                         return desc
-    
+
                     _unificada["Descripción de la Partida"] = _unificada.apply(_desc_with_chip, axis=1)
-    
+
                     # Columnas visibles
                     _tabla_unica = _unificada.rename(columns={
                         "Partida": "Partida",
-                          "Descripción": "Actividad (Cronograma)"  # ya renombrada arriba
+                        "Descripción": "Actividad (Cronograma)"  # ya renombrada arriba
                     })[[
                         "Partida",
                         "Descripción de la Partida",
@@ -1855,17 +1905,17 @@ with tabs[1]:
                         "Monto Anual (Ahora)",
                         "Diferencia",
                     ]]
-    
+
                     # --- Filtro: mostrar solo filas con monto ≠ 0 en Antes o Ahora ---
                     _eps = 1e-9
                     _mask_nonzero = (_tabla_unica["Monto Anual (Antes)"].abs() > _eps) | (_tabla_unica["Monto Anual (Ahora)"].abs() > _eps)
                     _tabla_unica = _tabla_unica[_mask_nonzero].sort_values(["Partida", "Actividad (Cronograma)"], kind="stable")
-                    
+
                     def _bg_delta_cell(v):
                         if pd.isna(v):
                             return ""
                         return "background-color:#fff3cd" if abs(v) != 0 else ""
-    
+
                     styled_unica = (
                         _tabla_unica
                         .style
@@ -1877,21 +1927,21 @@ with tabs[1]:
                         .applymap(_bg_delta_cell, subset=["Diferencia"])
                         .hide(axis="index")
                     )
-    
+
                     # IMPORTANTE: usar HTML para renderizar el chip
                     st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
-    
+
                     # ====== 3) Catálogo de partidas (COMPLETO, sin filtrar) ======
                     with st.expander("📖 Catálogo de partidas (completo)"):
                         q = st.text_input(
                             "Filtrar por código, definición o validador",
                             key=f"filtro_catalogo_full_{_fmt_id_meta(id_meta_sel)}"
                         ).strip().lower()
-    
+
                         # Reusar columnas detectadas
                         cat_full_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
                         cat_full = CATALOGO_PARTIDAS[cat_full_cols].drop_duplicates().copy() if cat_full_cols else pd.DataFrame(columns=["Partida_fmt"])
-    
+
                         if q:
                             cat_show = cat_full[
                                 cat_full.apply(
@@ -1901,7 +1951,7 @@ with tabs[1]:
                             ]
                         else:
                             cat_show = cat_full
-    
+
                         vista_tabla = st.toggle("Ver como tabla compacta", value=False, key=f"vista_tabla_full_{_fmt_id_meta(id_meta_sel)}")
                         if cat_show.empty:
                             st.markdown("_Sin coincidencias._")
@@ -1979,6 +2029,8 @@ with tabs[1]:
             )
             fig_cump.update_layout(xaxis_tickangle=-45, height=400)
             st.plotly_chart(fig_cump, use_container_width=True)
+
+
 
 #==========Bloque 5.1: Pestaña Beneficiarios ====================
 
@@ -2116,13 +2168,7 @@ with tabs[2]:
             _render_categoria(c["etq"], c["nombre"], c["carac"], c["cant"], ben_a, ben_h)
 
 
-
-
 # ========= FIN BLOQUE 5 =========
-
-
-
-
 # ========= BLOQUE 6 · DIAGNÓSTICO, LOGGING Y MANTENIMIENTO =========
 import time
 from contextlib import contextmanager
@@ -2155,15 +2201,15 @@ def df_stats(df: pd.DataFrame) -> dict:
     return {"filas": len(df), "columnas": len(df.columns), "mem_mb": mem}
 
 # --- Panel de control en sidebar ---
-#with st.sidebar:
-#    with st.expander("🧪 Diagnóstico & rendimiento", expanded=False):
-#        st.session_state["_perf_on"] = st.toggle("Activar logging de rendimiento", value=st.session_state["_perf_on"])
-#        if st.button("🧹 Limpiar caché de datos"):
-#            st.cache_data.clear()
-#            st.success("Caché de datos limpiada.")
-#        if st.button("🗑️ Borrar logs de rendimiento"):
-#            st.session_state["_perf_logs"].clear()
-#            st.success("Logs de rendimiento borrados.")
+with st.sidebar:
+    with st.expander("🧪 Diagnóstico & rendimiento", expanded=False):
+        st.session_state["_perf_on"] = st.toggle("Activar logging de rendimiento", value=st.session_state["_perf_on"])
+        if st.button("🧹 Limpiar caché de datos"):
+            st.cache_data.clear()
+            st.success("Caché de datos limpiada.")
+        if st.button("🗑️ Borrar logs de rendimiento"):
+            st.session_state["_perf_logs"].clear()
+            st.success("Logs de rendimiento borrados.")
 
 # --- Resumen rápido de dataframes filtrados por Clave Q ---
 with st.expander("📊 Resumen técnico de dataframes (filtrados por Clave Q)"):
@@ -2183,7 +2229,7 @@ with st.expander("📊 Resumen técnico de dataframes (filtrados por Clave Q)"):
         [(nombre, info["filas"], info["columnas"], round(info["mem_mb"], 3)) for nombre, info in resumen],
         columns=["DataFrame", "Filas", "Columnas", "Memoria (MB)"]
     )
-#    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+    st.dataframe(df_resumen, use_container_width=True, hide_index=True)
 
 # --- Visualizar logs de rendimiento, si existen ---
 if st.session_state["_perf_logs"]:
@@ -2198,36 +2244,3 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
