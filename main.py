@@ -433,14 +433,18 @@ def _to_set(series: pd.Series) -> set:
     return set(vals)
 
 # Agrega la hoja "Sección de Metas" por ID Meta (o Clave de Meta si faltara)
-def _agregar_por_meta_simple(df: pd.DataFrame) -> pd.DataFrame:
+def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     df = df.copy()
 
-    # Llave principal y fallback
-    tiene_id = ("ID Meta" in df.columns) and df["ID Meta"].notna().any()
-    df["llave_meta"] = (df["ID Meta"] if tiene_id else df["Clave de Meta"]).astype(str)
+    if meta_key not in df.columns:
+        # Fallo explícito para que el usuario cambie la llave
+        return pd.DataFrame()
 
-    # Asegurar columnas numéricas presentes (si no existen, crearlas en 0)
+    # ✅ Llave única, sin fallback
+    df["llave_meta"] = df[meta_key].astype(str)
+
+    # (Resto del código igual…)
+    # Asegurar cols numéricas presentes
     num_cols = [
         "Cantidad Estatal","Monto Estatal",
         "Cantidad Federal","Monto Federal",
@@ -449,12 +453,9 @@ def _agregar_por_meta_simple(df: pd.DataFrame) -> pd.DataFrame:
     for c in num_cols:
         if c not in df.columns:
             df[c] = 0
-    for c in num_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
 
     g = df.groupby("llave_meta", dropna=False)
-
-    # Agregados simples
     agg = {}
     if "Descripción de la Meta" in df.columns:
         agg["Descripción de la Meta"] = _first_nonempty
@@ -468,21 +469,15 @@ def _agregar_por_meta_simple(df: pd.DataFrame) -> pd.DataFrame:
         agg[c] = "sum"
 
     base = g.agg(agg)
-
-    # Sets
     base["set_municipio"] = g["Municipio"].apply(_to_set) if "Municipio" in df.columns else g.size().apply(lambda _: set())
     base["set_rp"]        = g["Registro Presupuestal"].apply(_to_set) if "Registro Presupuestal" in df.columns else g.size().apply(lambda _: set())
-
-    # Normalizados para comparación
     base["desc_norm"] = base["Descripción de la Meta"].apply(_norm_simple) if "Descripción de la Meta" in base.columns else ""
     base["um_norm"]   = base["Unidad de Medida"].apply(_norm_simple) if "Unidad de Medida" in base.columns else ""
+    return base.reset_index()
 
-    base = base.reset_index()
-    return base
-
-def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame) -> pd.DataFrame:
-    A = _agregar_por_meta_simple(metas_antes)
-    H = _agregar_por_meta_simple(metas_ahora)
+def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str) -> pd.DataFrame:
+    A = _agregar_por_meta_simple(metas_antes, meta_key)
+    H = _agregar_por_meta_simple(metas_ahora, meta_key)
 
     # Hacer merge outer por llave_meta
     df = pd.merge(
@@ -712,6 +707,14 @@ with st.sidebar:
             "Corte AHORA (Detalle de Qs 2)",
             type=["xlsx"], key="ben_ahora_file"
         )
+with st.sidebar:
+    st.markdown("### 🔑 Llave para comparar metas")
+    llave_opcion = st.radio(
+        "¿Tus reportes ya cuentan con claves estandarizadas de metas? Selecciona Clave de meta:",
+        ["ID Meta", "Clave de Meta"],
+        horizontal=True,
+        key="llave_meta_opcion"
+    )
 
 
 
@@ -798,7 +801,8 @@ else:
 # ========= FIN BLOQUE 2 =========
 # ========= BLOQUE 3 · CARGA DE HOJAS + LIMPIEZA + TOTALES + FILTRO POR CLAVE Q =========
 
-META_COL = "ID Meta"  # Llave operativa de metas
+# Llave operativa de metas (según selección del usuario)
+META_COL = "ID Meta" if llave_opcion == "ID Meta" else "Clave de Meta"
 
 # ---- 3.1 Cargar Datos Generales (ambos cortes) ----
 COLUMNAS_DATOS_GENERALES = [
@@ -859,31 +863,23 @@ metas_partidas_ahora = metas_partidas_ahora[metas_partidas_ahora["Clave Q"] == c
 metas_partidas_antes = metas_partidas_antes[metas_partidas_antes["Clave Q"] == clave_q]
 
 # ---- 3.7 Cargar CUMPLIMIENTO (ambos cortes) con fallback suave a 'Clave de Meta' ----
-#      Nota: Pedimos también "Clave de Meta" en columnas por si la hoja aún no migra a ID Meta.
+# Cargar Cumplimiento (pide ambas llaves para que estén disponibles)
 COLUMNAS_CUMPLIMIENTO = (
-    [META_COL, "Clave de Meta", "Cantidad"] +
+    ["ID Meta", "Clave de Meta", "Cantidad"] +
     [f"Cumplimiento {mes}" for mes in [
-        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        "Enero","Febrero","Marzo","Abril","Mayo","Junio",
+        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"
     ]]
 )
-
 cumplimiento_ahora = cargar_hoja(archivo_ahora, "Sección de Metas-Cumplimiento", COLUMNAS_CUMPLIMIENTO).copy()
 cumplimiento_antes = cargar_hoja(archivo_antes, "Sección de Metas-Cumplimiento", COLUMNAS_CUMPLIMIENTO).copy()
 
-# Fallback: si no hay ID Meta pero sí Clave de Meta, renombrar
-if META_COL not in cumplimiento_ahora.columns and "Clave de Meta" in cumplimiento_ahora.columns:
-    cumplimiento_ahora.rename(columns={"Clave de Meta": META_COL}, inplace=True)
-if META_COL not in cumplimiento_antes.columns and "Clave de Meta" in cumplimiento_antes.columns:
-    cumplimiento_antes.rename(columns={"Clave de Meta": META_COL}, inplace=True)
+# ✅ Sin renombrar: exigimos la columna seleccionada por el usuario
+if META_COL not in cumplimiento_ahora.columns or META_COL not in cumplimiento_antes.columns:
+    st.error(f"No se encontró la columna **{META_COL}** en la hoja 'Sección de Metas-Cumplimiento'. "
+             f"Cambia la opción de llave o revisa el archivo.")
+    st.stop()
 
-# Limpieza: eliminar filas sin ID Meta
-cumplimiento_ahora = cumplimiento_ahora.dropna(subset=[META_COL])
-cumplimiento_antes = cumplimiento_antes.dropna(subset=[META_COL])
-
-# (Opcional) Nombre del proyecto para encabezados posteriores
-nombre_proyecto_vals = datos_ahora["Nombre del Proyecto (Ejercicio Actual)"].values
-nombre_proyecto = nombre_proyecto_vals[0] if len(nombre_proyecto_vals) else ""
 
 # ---- 3.8 Cargar BENEFICIARIOS (ambos cortes) con cargar_hoja + filtro por Clave Q ----
 
@@ -1057,7 +1053,7 @@ with tabs[1]:
         st.caption("Comparativo rápido a nivel proyecto (corte Antes vs Ahora).")
 
         # 1) Construir comparativo base (no cambies esta llamada)
-        tabla_cc = construir_control_cambios_metas_info(metas_antes, metas_ahora)
+        tabla_cc = construir_control_cambios_metas_info(metas_antes, metas_ahora, META_COL)
 
         # 2) Crear versión para mostrar (sin tocar los datos base)
         tabla_show = tabla_cc.copy()
@@ -1118,11 +1114,15 @@ with tabs[1]:
         .drop_duplicates()
         .copy()
     )
-    metas_disponibles["Etiqueta"] = metas_disponibles[META_COL].apply(_fmt_id_meta) + " - " + metas_disponibles["Descripción de la Meta"].astype(str)
+    
+    def _fmt_meta_val(x):
+        return _fmt_id_meta(x) if META_COL == "ID Meta" else ("" if pd.isna(x) else str(x))
+    
+    metas_disponibles["Etiqueta"] = metas_disponibles[META_COL].apply(_fmt_meta_val) + " - " + metas_disponibles["Descripción de la Meta"].astype(str)
     metas_disponibles = metas_disponibles.sort_values("Etiqueta")
-
+    
     id_meta_label = st.selectbox(
-        "Selecciona una Meta (ID)",
+        "Selecciona una Meta",
         [""] + metas_disponibles["Etiqueta"].tolist(),
         key="filtro_meta"
     )
@@ -1143,13 +1143,16 @@ with tabs[1]:
             header_with_tooltip_meta(id_meta_sel)
 
             @st.cache_data(show_spinner=False)
-            def _info_meta(df_antes: pd.DataFrame, df_ahora: pd.DataFrame, id_meta_str: str):
-                # Filtrar dataframes por meta
-                f_ahora = df_ahora[df_ahora[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)]
-                f_antes = df_antes[df_antes[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)]
-                return (f_antes.copy(), f_ahora.copy())
-
-            df_antes_meta, df_ahora_meta = _info_meta(metas_antes, metas_ahora, id_meta_sel)
+            def _info_meta(df_antes: pd.DataFrame, df_ahora: pd.DataFrame, meta_key: str, meta_val: str):
+                if meta_key not in df_antes.columns or meta_key not in df_ahora.columns:
+                    return pd.DataFrame(), pd.DataFrame()
+                def _norm(v):  # para que funcione igual con ID (num) o Clave (texto)
+                    return _fmt_id_meta(v) if meta_key == "ID Meta" else ("" if pd.isna(v) else str(v))
+                f_ahora = df_ahora[df_ahora[meta_key].apply(_norm) == meta_val]
+                f_antes = df_antes[df_antes[meta_key].apply(_norm) == meta_val]
+                return f_antes.copy(), f_ahora.copy()
+            
+            df_antes_meta, df_ahora_meta = _info_meta(metas_antes, metas_ahora, META_COL, id_meta_sel)
 
             # --- Comparativos cualitativos (Descripción / Unidad de Medida)
             col1, col2 = st.columns(2)
@@ -1379,23 +1382,22 @@ with tabs[1]:
         else:
             # ---------- Cronograma (función única, cacheada) ----------
             @st.cache_data(show_spinner=False)
-            def _cronograma_df(cr_a: pd.DataFrame, cr_h: pd.DataFrame, id_meta_str: str) -> pd.DataFrame:
-                a = cr_a[cr_a[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
-                h = cr_h[cr_h[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
+            def _cronograma_df(cr_a: pd.DataFrame, cr_h: pd.DataFrame, meta_key: str, meta_val: str) -> pd.DataFrame:
+                def _norm(v):
+                    return _fmt_id_meta(v) if meta_key == "ID Meta" else ("" if pd.isna(v) else str(v))
+                a = cr_a[cr_a[meta_key].apply(_norm) == meta_val].copy()
+                h = cr_h[cr_h[meta_key].apply(_norm) == meta_val].copy()
                 if a.empty and h.empty:
                     return pd.DataFrame()
-                a["Versión"] = "Antes"
-                h["Versión"] = "Ahora"
+                a["Versión"] = "Antes"; h["Versión"] = "Ahora"
                 out = pd.concat([a, h], ignore_index=True)
-                out["Clave Num"] = pd.to_numeric(out["Clave de Actividad /Hito"], errors="coerce")
-    
-                # Si inicio==fin, alarga 1 día para que sea visible
+                out["Clave Num"] = pd.to_numeric(out.get("Clave de Actividad /Hito"), errors="coerce")
                 mismo_dia = (out["Fecha de Inicio"] == out["Fecha de Termino"])
                 out.loc[mismo_dia, "Fecha de Termino"] = out.loc[mismo_dia, "Fecha de Termino"] + pd.Timedelta(days=1)
                 return out
-    
-            df_crono = _cronograma_df(metas_crono_antes, metas_crono_ahora, id_meta_sel)
             
+            df_crono = _cronograma_df(metas_crono_antes, metas_crono_ahora, META_COL, id_meta_sel)
+                        
             
             st.markdown("##### Detalle de Actividades / Hitos (Cronograma Actual)")
     
@@ -2196,6 +2198,7 @@ if st.session_state["_perf_logs"]:
 #     df_comp_mpio = _resumen_municipal(df_antes_meta.copy(), df_ahora_meta.copy(), registro_opcion)
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
