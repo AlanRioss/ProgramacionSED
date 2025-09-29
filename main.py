@@ -916,29 +916,10 @@ beneficiarios_df = _prep_beneficiarios_unificado(beneficiarios_antes, beneficiar
 
 
 # ========= FIN BLOQUE 3 =========
-# ========= BLOQUE 4 · INFO DEL PROYECTO (MONTOS) =========
 
-# Encabezado con Clave Q y nombre del proyecto
-st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto}")
 
-# Monto total del proyecto (suma de 'Monto Total' en Sección de Metas)
-monto_total_antes = float(metas_antes["Monto Total"].sum()) if not metas_antes.empty else 0.0
-monto_total_ahora = float(metas_ahora["Monto Total"].sum()) if not metas_ahora.empty else 0.0
-diferencia_monto_total = monto_total_ahora - monto_total_antes
 
-st.markdown("### 💰 Monto Modificado del Proyecto")
-col_proy1, col_proy2 = st.columns(2)
-col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
-col_proy2.metric(
-    "Monto Total (Ahora)",
-    f"${monto_total_ahora:,.2f}",
-    delta=f"${diferencia_monto_total:,.2f}",
-    delta_color="normal"
-)
-
-st.markdown("---")
 # ========= FIN BLOQUE 4 =========
-# ========= BLOQUE 5 · PESTAÑAS (procesamiento bajo demanda) =========
 
 # Encabezado con Clave Q y nombre del proyecto
 st.markdown(f"### Proyecto: {clave_q} — {nombre_proyecto}")
@@ -2153,6 +2134,7 @@ def df_stats(df: pd.DataFrame) -> dict:
 
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
