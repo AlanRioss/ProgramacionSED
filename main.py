@@ -1305,7 +1305,7 @@ with tabs[1]:
                     .apply(_estilo_totales, axis=None)
                     .format(formato),
                 use_container_width=True
-            
+            )
 
 
 
@@ -2221,6 +2221,7 @@ with tabs[1]:
   
     
     
+
 
 
 
