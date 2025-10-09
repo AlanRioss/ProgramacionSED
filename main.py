@@ -1318,8 +1318,371 @@ with tabs[1]:
 
    # ================== SUBTAB 2: Cronograma y Partidas ==================
     with subtabs[1]:
+        # ---------- Partidas ----------
+        @st.cache_data(show_spinner=False)
+        def _partidas_resumen(pa: pd.DataFrame, ph: pd.DataFrame, id_meta_str: str | None, meta_key: str):
+            """Devuelve:
+            - comp: comparativo por Partida (Antes/Ahora) a nivel proyecto o meta
+            - df_mensual: totales mensuales (Antes/Ahora) para la selección actual (sin filtrar por Partida)
+            - a, h: dataframes de partidas (Antes/Ahora) ya filtrados por meta si aplica
+            """
+            meses_cols = [
+                "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
+                "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
+                "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
+            ]
+
+            a = pa.copy()
+            h = ph.copy()
+
+            # 🔎 Filtro por Meta SOLO si hay selección
+            if id_meta_str:
+                target = str(id_meta_str)
+                a = a[a[meta_key].apply(lambda v: _norm_meta_val(meta_key, v)) == target]
+                h = h[h[meta_key].apply(lambda v: _norm_meta_val(meta_key, v)) == target]
+
+            # Formateo de Partida a 4 dígitos (robusto)
+            for dfp in (a, h):
+                if "Partida" in dfp.columns:
+                    dfp["Partida_fmt"] = dfp["Partida"].apply(
+                        lambda x: str(int(float(x)))[:4] if pd.notnull(x) and str(x).strip() != "" else None
+                    )
+            a = a[a.get("Partida_fmt").notna()] if "Partida_fmt" in a.columns else a
+            h = h[h.get("Partida_fmt").notna()] if "Partida_fmt" in h.columns else h
+
+            # Comparativo por partida (monto anual)
+            res_h = (h.groupby("Partida_fmt")["Monto Anual"].sum().reset_index()
+                    .rename(columns={"Monto Anual": "Monto Anual (Ahora)"})) if not h.empty else pd.DataFrame(columns=["Partida_fmt", "Monto Anual (Ahora)"])
+            res_a = (a.groupby("Partida_fmt")["Monto Anual"].sum().reset_index()
+                    .rename(columns={"Monto Anual": "Monto Anual (Antes)"})) if not a.empty else pd.DataFrame(columns=["Partida_fmt", "Monto Anual (Antes)"])
+            comp = pd.merge(res_a, res_h, on="Partida_fmt", how="outer").fillna(0)
+            if not comp.empty:
+                comp["Diferencia"] = comp["Monto Anual (Ahora)"] - comp["Monto Anual (Antes)"]
+
+            # Totales mensuales (a nivel proyecto o meta según filtro)
+            sum_m_ahora = h[meses_cols].sum(numeric_only=True) if not h.empty else pd.Series([0]*12, index=meses_cols)
+            sum_m_antes = a[meses_cols].sum(numeric_only=True) if not a.empty else pd.Series([0]*12, index=meses_cols)
+            df_mensual = pd.DataFrame({
+                "Mes": [m.replace("Monto ", "") for m in meses_cols],
+                "Antes": sum_m_antes.values,
+                "Ahora": sum_m_ahora.values
+            })
+
+            return comp, df_mensual, a, h
+
+        df_comp_part, df_mensual, dfp_a, dfp_h = _partidas_resumen(
+            metas_partidas_antes, metas_partidas_ahora, id_meta_sel if id_meta_sel else None, META_COL
+        )
+
+        st.markdown("##### Partidas de Gasto")
+
+            
+        # ====== 1) Distribución mensual (selector + gráfico) ======
+        # Lista de partidas disponibles a partir de ambos cortes
+        partidas_disponibles = sorted(
+            pd.Index(
+                pd.concat([
+                    dfp_a.get("Partida_fmt", pd.Series(dtype=object)),
+                    dfp_h.get("Partida_fmt", pd.Series(dtype=object))
+                ], ignore_index=True)
+            ).dropna().astype(str).unique().tolist()
+        )
+
+
+
+        # --- Filtro de partidas (más limpio, dentro de un expander) ---
+
+        st.write("**Selecciona una meta para visualizar su calendarizado (Por default se muestra del proyecto completo)**")
+
+        with st.expander("🎚️ Filtro de partidas", expanded=False):
+            col1, col2 = st.columns([3, 1])
+            todas_on = col2.checkbox(
+                "Todas",
+                value=False,
+                key=f"chk_todas_{_fmt_id_meta(id_meta_sel)}"
+            )
+
+            if todas_on:
+                filtro_partidas = partidas_disponibles
+            else:
+                filtro_partidas = col1.multiselect(
+                    "Selecciona partidas:",
+                    options=partidas_disponibles,
+                    default=[],
+                    key=f"ms_partidas_{_fmt_id_meta(id_meta_sel)}",
+                    placeholder="Escribe o selecciona una o más partidas..."
+                )
+
+        # Si no hay selección, mostrar todas
+        if not filtro_partidas:
+            filtro_partidas = partidas_disponibles
+
+        # Muestra resumen del filtro activo
+        st.caption(f"Mostrando {len(filtro_partidas)} de {len(partidas_disponibles)} partidas disponibles.")
+
+
+        # Filtrado
+        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
+        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
+
+        meses_cols = [
+            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
+            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
+            "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
+        ]
+
+        sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
+        sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
+
+        df_mensual_sel = pd.DataFrame({
+            "Mes": [m.replace("Monto ", "") for m in meses_cols],
+            "Antes": sum_m_antes.values,
+            "Ahora": sum_m_ahora.values
+        })
+
+
+        # --- Gráfico mensual con etiquetas SOLO en "Ahora" (K/M/B y sin ceros) ---
+        def _humanize_kmb(x):
+            if pd.isna(x): return ""
+            try: v = float(x)
+            except Exception: return ""
+            if v == 0: return ""
+            a = abs(v)
+            if a >= 1_000_000_000: return f"${v/1_000_000_000:.2f}B"
+            if a >= 1_000_000:     return f"${v/1_000_000:.2f}M"
+            if a >= 1_000:         return f"${v/1_000:.0f}K"
+            return f"${v:,.0f}"
+
+        labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
+
+        titulo_scope = (f"Meta ({'ID ' if META_COL=='ID Meta' else ''}{META_COL} {id_meta_sel})"
+                if id_meta_sel else "Proyecto completo")
+
+        fig_mes = px.bar(
+            df_mensual_sel,
+            x="Mes",
+            y=["Antes", "Ahora"],
+            barmode="group",
+            title=f"Calendarizado Mensual – {titulo_scope}",
+            labels={"value": "Monto", "variable": "Versión"},
+            color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"}
+        )
+
+        
+        def _apply_text_to_ahora(trace):
+            if trace.name == "Ahora":
+                trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
+            else:
+                trace.update(text=None)
+
+        fig_mes.for_each_trace(_apply_text_to_ahora)
+        fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
+        st.plotly_chart(fig_mes, use_container_width=True)
+
+        # ====== 2) Partidas por Actividad / Hito (unificada, con chip en descripción y filtro ≠ 0) ======
+        st.markdown("##### Partidas por Actividad ")
+
+        # 👇 Incluir META_COL en los detalles para que podamos mostrar la llave
+        _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+        _det_h = dfp_h[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+
+        _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
+        _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
+
+        # Merge por Partida_fmt + Clave; la llave META_COL puede venir en A o en H → hacemos coalesce después
+        _unificada = pd.merge(
+            _det_a, _det_h,
+            on=["Partida_fmt", "Clave de Actividad /Hito"],
+            how="outer",
+            suffixes=("_A", "_H")
+        )
+
+        # Coalesce de la llave (ID Meta o Clave de Meta, según tu selector)
+        if f"{META_COL}_H" in _unificada.columns or f"{META_COL}_A" in _unificada.columns:
+            _unificada[META_COL] = _unificada.get(f"{META_COL}_H").combine_first(_unificada.get(f"{META_COL}_A"))
+
+        # Descripción preferente: Ahora > Antes
+        _unificada["Descripción"] = _unificada["Desc_H"].combine_first(_unificada["Desc_A"])
+
+        # Números + diferencia
+        for c in ["Monto Anual (Antes)", "Monto Anual (Ahora)"]:
+            _unificada[c] = pd.to_numeric(_unificada[c], errors="coerce").fillna(0.0)
+        _unificada["Diferencia"] = _unificada["Monto Anual (Ahora)"] - _unificada["Monto Anual (Antes)"]
+
+
+        # --- Join catálogo (robusto) para descripción, restringida y validador
+        def _pick_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
+            for c in candidates:
+                if c in df.columns:
+                    return c
+            return None
+
+        desc_candidates  = ["Definición", "Definicion", "Descripción", "Descripcion",
+                            "Descripción de la Partida", "Descripcion de la Partida",
+                            "Desc Partida", "Descripcion Partida"]
+        restr_candidates = ["Restringida", "Restringido", "Restriccion", "Restricción"]
+        valid_candidates = ["Validador", "Validador Partida", "Validador_Partida"]
+
+        desc_col  = _pick_col(CATALOGO_PARTIDAS, desc_candidates)
+        restr_col = _pick_col(CATALOGO_PARTIDAS, restr_candidates)
+        valid_col = _pick_col(CATALOGO_PARTIDAS, valid_candidates)
+
+        cat_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
+        _catalogo = CATALOGO_PARTIDAS[cat_cols].drop_duplicates().copy() if cat_cols else pd.DataFrame(columns=["Partida_fmt"])
+
+        _unificada = _unificada.merge(_catalogo, on="Partida_fmt", how="left")
+
+        # Renombres y defaults
+        rename_map = {"Partida_fmt": "Partida"}
+        if desc_col:  rename_map[desc_col]  = "Descripción de la Partida"
+        if restr_col: rename_map[restr_col] = "Restringida"
+        if valid_col: rename_map[valid_col] = "Validador"
+        _unificada = _unificada.rename(columns=rename_map)
+        if "Descripción de la Partida" not in _unificada.columns: _unificada["Descripción de la Partida"] = ""
+        if "Restringida" not in _unificada.columns:               _unificada["Restringida"] = False
+        if "Validador" not in _unificada.columns:                 _unificada["Validador"] = ""
+
+        # --- CHIP en "Descripción de la Partida" cuando esté restringida ---
+        import html as _html_mod  # para escapar texto
+        def _to_bool(v):
+            if pd.isna(v): return False
+            if isinstance(v, (bool,)): return bool(v)
+            if isinstance(v, (int, float)): return v != 0
+            s = str(v).strip().lower()
+            return s in {"true", "1", "sí", "si", "yes", "y"}
+
+        def _desc_with_chip(row):
+            desc = _html_mod.escape(str(row.get("Descripción de la Partida", "") or ""))
+            if _to_bool(row.get("Restringida")):
+                val = (row.get("Validador") or "").strip()
+                if val:
+                    return f"{desc} <span class='chip chip--lock'>🔒 {val}</span>"
+                return f"{desc} <span class='chip chip--lock'>🔒</span>"
+            return desc
+
+        _unificada["Descripción de la Partida"] = _unificada.apply(_desc_with_chip, axis=1)
+
+        # Etiqueta amigable para la llave
+        meta_label = "ID de Meta" if META_COL == "ID Meta" else "Clave de Meta"
+
+        # Columnas visibles (ahora incluye la llave META_COL como primera columna)
+        _cols_finales = [
+            META_COL,                         # <- llave real en datos
+            "Partida",
+            "Descripción de la Partida",
+            "Actividad (Cronograma)",
+            "Monto Anual (Antes)",
+            "Monto Anual (Ahora)",
+            "Diferencia",
+        ]
+
+        # Arma la tabla final con la llave
+        _tabla_unica = (
+            _unificada.rename(columns={"Partida_fmt": "Partida", "Descripción": "Actividad (Cronograma)"})
+            .reindex(columns=[c for c in _cols_finales if c in _unificada.columns or c in ["Partida","Descripción de la Partida","Actividad (Cronograma)"]])
+            .copy()
+        )
+
+        # Renombra la columna de la llave a una etiqueta legible
+        if META_COL in _tabla_unica.columns:
+            _tabla_unica.rename(columns={META_COL: meta_label}, inplace=True)
+
+        # --- Filtro: mostrar solo filas con monto ≠ 0 en Antes o Ahora (igual que antes) ---
+        _eps = 1e-9
+        _mask_nonzero = (_tabla_unica["Monto Anual (Antes)"].abs() > _eps) | (_tabla_unica["Monto Anual (Ahora)"].abs() > _eps)
+        _tabla_unica = _tabla_unica[_mask_nonzero].sort_values(["Partida", "Actividad (Cronograma)"], kind="stable")
+
+        
+
+        def _bg_delta_cell(v):
+            if pd.isna(v):
+                return ""
+            return "background-color:#fff3cd" if abs(v) != 0 else ""
+
+        # --- ORDENAMIENTO (simple) + modo interactivo opcional ---
+
+        # Controles de orden (por defecto: Diferencia descendente)
+        with st.expander("⚙️ Opciones de ordenamiento", expanded=False):
+            col_ord1, col_ord2, col_mode = st.columns([2,1,1])
+            opciones_sort = [
+                "Diferencia",
+                "Monto Anual (Ahora)",
+                "Monto Anual (Antes)",
+                "Partida",
+                "Actividad (Cronograma)",
+            ]
+            sort_col = col_ord1.selectbox(
+                "Ordenar por",
+                opciones_sort,
+                index=1,
+                key=f"sortcol_{_fmt_id_meta(id_meta_sel)}"
+            )
+            asc = col_ord2.toggle(
+                "Ascendente",
+                value=False,
+                key=f"sortasc_{_fmt_id_meta(id_meta_sel)}"
+            )
+            modo_interactivo = col_mode.toggle(
+                "Tabla interactiva",
+                value=False,
+                help="Permite ordenar clicando en el encabezado (sin ‘chip’ 🔒).",
+                key=f"modo_inter_{_fmt_id_meta(id_meta_sel)}"
+            )
+
+        # DataFrame ordenado (estable)
+        _tabla_ordenada = _tabla_unica.sort_values(sort_col, ascending=asc, kind="stable").copy()
+
+        if modo_interactivo:
+            # Vista interactiva: sin HTML del chip para que el sorting por columna funcione con clic
+            import re
+            def _strip_html(x):
+                return re.sub(r"<.*?>", "", str(x)) if isinstance(x, str) else x
+
+            df_inter = _tabla_ordenada.copy()
+            if "Descripción de la Partida" in df_inter.columns:
+                df_inter["Descripción de la Partida"] = df_inter["Descripción de la Partida"].map(_strip_html)
+
+            st.dataframe(
+                df_inter,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    meta_label: st.column_config.TextColumn(width="small"),   # 👈 nueva
+                    "Partida": st.column_config.TextColumn(width="small"),
+                    "Descripción de la Partida": st.column_config.TextColumn(width="large"),
+                    "Actividad (Cronograma)": st.column_config.TextColumn(width="medium"),
+                    "Monto Anual (Antes)": st.column_config.NumberColumn(format="%,.2f"),
+                    "Monto Anual (Ahora)": st.column_config.NumberColumn(format="%,.2f"),
+                    "Diferencia": st.column_config.NumberColumn(format="%,.2f"),
+                },
+            )
+        else:
+            # Vista con CHIP 🔒 y resaltado en Diferencia (como ya tenías), pero ya ordenada
+            def _bg_delta_cell(v):
+                if pd.isna(v):
+                    return ""
+                return "background-color:#fff3cd" if abs(v) != 0 else ""
+
+            styled_unica = (
+                _tabla_ordenada
+                .style
+                .format({
+                    "Monto Anual (Antes)": "${:,.2f}",
+                    "Monto Anual (Ahora)": "${:,.2f}",
+                    "Diferencia": "${:,.2f}"
+                })
+                .applymap(_bg_delta_cell, subset=["Diferencia"])
+                .hide(axis="index")
+            )
+            st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
+
+
+        # IMPORTANTE: usar HTML para renderizar el chip
+    #    st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
+
+
         if not id_meta_sel:
-            st.info("Selecciona una Meta (ID) para ver Cronograma y Partidas.")
+            st.info("Selecciona una Meta (ID) para ver Cronograma")
         else:
             # ---------- Cronograma (función única, cacheada) ----------
             @st.cache_data(show_spinner=False)
@@ -1622,301 +1985,63 @@ with tabs[1]:
                 # Fin del cronograma
 
 
-                    # ---------- Partidas ----------
-                    @st.cache_data(show_spinner=False)
-                    def _partidas_resumen(pa: pd.DataFrame, ph: pd.DataFrame, id_meta_str: str):
-                        meses_cols = [
-                            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
-                            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
-                            "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
-                        ]
-                        a = pa[pa[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
-                        h = ph[ph[META_COL].apply(_fmt_id_meta) == _fmt_id_meta(id_meta_str)].copy()
 
-                        # Partida a 4 dígitos
-                        for dfp in (a, h):
-                            if "Partida" in dfp.columns:
-                                dfp["Partida_fmt"] = dfp["Partida"].apply(lambda x: str(int(float(x)))[:4] if pd.notnull(x) else None)
-                        a = a[a["Partida_fmt"].notna()]
-                        h = h[h["Partida_fmt"].notna()]
 
-                        res_h = h.groupby("Partida_fmt")["Monto Anual"].sum().reset_index().rename(columns={"Monto Anual": "Monto Anual (Ahora)"})
-                        res_a = a.groupby("Partida_fmt")["Monto Anual"].sum().reset_index().rename(columns={"Monto Anual": "Monto Anual (Antes)"})
-                        comp = pd.merge(res_a, res_h, on="Partida_fmt", how="outer").fillna(0)
-                        comp["Diferencia"] = comp["Monto Anual (Ahora)"] - comp["Monto Anual (Antes)"]
+        # ====== 3) Catálogo de partidas (COMPLETO, sin filtrar) ======
+        with st.expander("📖 Catálogo de partidas (completo)"):
+            q = st.text_input(
+                "Filtrar por código, definición o validador",
+                key=f"filtro_catalogo_full_{_fmt_id_meta(id_meta_sel)}"
+            ).strip().lower()
 
-                        # Sumas mensuales (para gráfica)
-                        sum_m_ahora = h[meses_cols].sum(numeric_only=True)
-                        sum_m_antes = a[meses_cols].sum(numeric_only=True)
-                        df_mensual = pd.DataFrame({
-                            "Mes": [m.replace("Monto ", "") for m in meses_cols],
-                            "Antes": sum_m_antes.values,
-                            "Ahora": sum_m_ahora.values
-                        })
-                        return comp, df_mensual, a, h
+            # Reusar columnas detectadas
+            cat_full_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
+            cat_full = CATALOGO_PARTIDAS[cat_full_cols].drop_duplicates().copy() if cat_full_cols else pd.DataFrame(columns=["Partida_fmt"])
 
-                    df_comp_part, df_mensual, dfp_a, dfp_h = _partidas_resumen(metas_partidas_antes, metas_partidas_ahora, id_meta_sel)
-
-                    st.markdown("##### Comparativo de Montos por Partida")
-
-                   
-                    # ====== 1) Distribución mensual (selector + gráfico) ======
-                    # Lista de partidas disponibles a partir de ambos cortes
-                    partidas_disponibles = sorted(
-                        pd.Index(
-                            pd.concat([
-                                dfp_a.get("Partida_fmt", pd.Series(dtype=object)),
-                                dfp_h.get("Partida_fmt", pd.Series(dtype=object))
-                            ], ignore_index=True)
-                        ).dropna().astype(str).unique().tolist()
+            if q:
+                cat_show = cat_full[
+                    cat_full.apply(
+                        lambda r: q in f"{r.get('Partida_fmt','')} {r.get(desc_col,'')} {r.get(valid_col,'')}".lower(),
+                        axis=1
                     )
+                ]
+            else:
+                cat_show = cat_full
 
-                    st.write("**Selecciona una o más partidas para ver su distribución mensual**")
-
-                    # Checkbox "Todas"
-                    col_all, = st.columns(1)
-                    todas_on = col_all.checkbox(
-                        "Todas",
-                        value=False,
-                        key=f"chk_todas_{_fmt_id_meta(id_meta_sel)}"
+            vista_tabla = st.toggle("Ver como tabla compacta", value=False, key=f"vista_tabla_full_{_fmt_id_meta(id_meta_sel)}")
+            if cat_show.empty:
+                st.markdown("_Sin coincidencias._")
+            else:
+                if vista_tabla:
+                    # Renombres seguros para mostrar
+                    rename_map2 = {"Partida_fmt": "Código"}
+                    if desc_col:  rename_map2[desc_col]  = "Definición"
+                    if restr_col: rename_map2[restr_col] = "Restringida"
+                    if valid_col: rename_map2[valid_col] = "Validador"
+                    df_tabla = cat_show.rename(columns=rename_map2)
+                    mostrar_cols = ["Código", "Definición"] + [c for c in ["Restringida", "Validador"] if c in df_tabla.columns]
+                    st.dataframe(
+                        df_tabla[mostrar_cols], use_container_width=True, hide_index=True,
+                        column_config={
+                            "Código": st.column_config.TextColumn(width="small"),
+                            "Definición": st.column_config.TextColumn(width="large"),
+                            **({"Restringida": st.column_config.CheckboxColumn("🔒", help="Requiere validador", disabled=True, width="small")} if "Restringida" in df_tabla.columns else {}),
+                            **({"Validador": st.column_config.TextColumn(width="small")} if "Validador" in df_tabla.columns else {}),
+                        }
                     )
-
-                    # Si "Todas" está activo, ignoramos el resto de checkboxes
-                    if todas_on:
-                        filtro_partidas = partidas_disponibles
-                    else:
-                        # Renderizamos checkboxes en filas/columnas para efecto "píldoras"
-                        # (ajusta n_cols según ancho; 4–6 suele verse bien)
-                        n_cols = 8
-                        seleccionadas = []
-                        for i, p in enumerate(partidas_disponibles):
-                            if i % n_cols == 0:
-                                cols = st.columns(n_cols)
-                            if cols[i % n_cols].checkbox(
-                                p,
-                                key=f"chk_{_fmt_id_meta(id_meta_sel)}_{p}"
-                            ):
-                                seleccionadas.append(p)
-                        filtro_partidas = seleccionadas if len(seleccionadas) > 0 else partidas_disponibles
-
-                    # Filtrado
-                    df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
-                    df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
-
-                    meses_cols = [
-                        "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
-                        "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
-                        "Monto Octubre", "Monto Noviembre", "Monto Diciembre"
-                    ]
-
-                    sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
-                    sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
-
-                    df_mensual_sel = pd.DataFrame({
-                        "Mes": [m.replace("Monto ", "") for m in meses_cols],
-                        "Antes": sum_m_antes.values,
-                        "Ahora": sum_m_ahora.values
-                    })
-
-
-                    # --- Gráfico mensual con etiquetas SOLO en "Ahora" (K/M/B y sin ceros) ---
-                    def _humanize_kmb(x):
-                        if pd.isna(x): return ""
-                        try: v = float(x)
-                        except Exception: return ""
-                        if v == 0: return ""
-                        a = abs(v)
-                        if a >= 1_000_000_000: return f"${v/1_000_000_000:.2f}B"
-                        if a >= 1_000_000:     return f"${v/1_000_000:.2f}M"
-                        if a >= 1_000:         return f"${v/1_000:.0f}K"
-                        return f"${v:,.0f}"
-
-                    labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
-
-                    fig_mes = px.bar(
-                        df_mensual_sel,
-                        x="Mes",
-                        y=["Antes", "Ahora"],
-                        barmode="group",
-                        title=f"Distribución Mensual de Montos - Meta (ID) {_fmt_id_meta(id_meta_sel)}",
-                        labels={"value": "Monto", "variable": "Versión"},
-                        color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"}
-                    )
-
-                    def _apply_text_to_ahora(trace):
-                        if trace.name == "Ahora":
-                            trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
-                        else:
-                            trace.update(text=None)
-
-                    fig_mes.for_each_trace(_apply_text_to_ahora)
-                    fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
-                    st.plotly_chart(fig_mes, use_container_width=True)
-
-                    # ====== 2) Partidas por Actividad / Hito (unificada, con chip en descripción y filtro ≠ 0) ======
-                    st.markdown("##### Partidas por Actividad ")
-
-                    # Unir Antes/Ahora por Partida_fmt + Clave de Actividad/Hito
-                    _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", "Descripción", "Monto Anual"]].copy()
-                    _det_h = dfp_h[["Partida_fmt", "Clave de Actividad /Hito", "Descripción", "Monto Anual"]].copy()
-                    _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
-                    _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
-
-                    _unificada = pd.merge(_det_a, _det_h, on=["Partida_fmt", "Clave de Actividad /Hito"], how="outer")
-
-                    # Descripción preferente: Ahora > Antes
-                    _unificada["Descripción"] = _unificada["Desc_H"].combine_first(_unificada["Desc_A"])
-
-                    # Números + diferencia
-                    for c in ["Monto Anual (Antes)", "Monto Anual (Ahora)"]:
-                        _unificada[c] = pd.to_numeric(_unificada[c], errors="coerce").fillna(0.0)
-                    _unificada["Diferencia"] = _unificada["Monto Anual (Ahora)"] - _unificada["Monto Anual (Antes)"]
-
-                    # --- Join catálogo (robusto) para descripción, restringida y validador
-                    def _pick_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
-                        for c in candidates:
-                            if c in df.columns:
-                                return c
-                        return None
-
-                    desc_candidates  = ["Definición", "Definicion", "Descripción", "Descripcion",
-                                        "Descripción de la Partida", "Descripcion de la Partida",
-                                        "Desc Partida", "Descripcion Partida"]
-                    restr_candidates = ["Restringida", "Restringido", "Restriccion", "Restricción"]
-                    valid_candidates = ["Validador", "Validador Partida", "Validador_Partida"]
-
-                    desc_col  = _pick_col(CATALOGO_PARTIDAS, desc_candidates)
-                    restr_col = _pick_col(CATALOGO_PARTIDAS, restr_candidates)
-                    valid_col = _pick_col(CATALOGO_PARTIDAS, valid_candidates)
-
-                    cat_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
-                    _catalogo = CATALOGO_PARTIDAS[cat_cols].drop_duplicates().copy() if cat_cols else pd.DataFrame(columns=["Partida_fmt"])
-
-                    _unificada = _unificada.merge(_catalogo, on="Partida_fmt", how="left")
-
-                    # Renombres y defaults
-                    rename_map = {"Partida_fmt": "Partida"}
-                    if desc_col:  rename_map[desc_col]  = "Descripción de la Partida"
-                    if restr_col: rename_map[restr_col] = "Restringida"
-                    if valid_col: rename_map[valid_col] = "Validador"
-                    _unificada = _unificada.rename(columns=rename_map)
-                    if "Descripción de la Partida" not in _unificada.columns: _unificada["Descripción de la Partida"] = ""
-                    if "Restringida" not in _unificada.columns:               _unificada["Restringida"] = False
-                    if "Validador" not in _unificada.columns:                 _unificada["Validador"] = ""
-
-                    # --- CHIP en "Descripción de la Partida" cuando esté restringida ---
-                    import html as _html_mod  # para escapar texto
-                    def _to_bool(v):
-                        if pd.isna(v): return False
-                        if isinstance(v, (bool,)): return bool(v)
-                        if isinstance(v, (int, float)): return v != 0
-                        s = str(v).strip().lower()
-                        return s in {"true", "1", "sí", "si", "yes", "y"}
-
-                    def _desc_with_chip(row):
-                        desc = _html_mod.escape(str(row.get("Descripción de la Partida", "") or ""))
-                        if _to_bool(row.get("Restringida")):
-                            val = (row.get("Validador") or "").strip()
-                            if val:
-                                return f"{desc} <span class='chip chip--lock'>🔒 {val}</span>"
-                            return f"{desc} <span class='chip chip--lock'>🔒</span>"
-                        return desc
-
-                    _unificada["Descripción de la Partida"] = _unificada.apply(_desc_with_chip, axis=1)
-
-                    # Columnas visibles
-                    _tabla_unica = _unificada.rename(columns={
-                        "Partida": "Partida",
-                        "Descripción": "Actividad (Cronograma)"  # ya renombrada arriba
-                    })[[
-                        "Partida",
-                        "Descripción de la Partida",
-                        "Actividad (Cronograma)",
-                        "Monto Anual (Antes)",
-                        "Monto Anual (Ahora)",
-                        "Diferencia",
-                    ]]
-
-                    # --- Filtro: mostrar solo filas con monto ≠ 0 en Antes o Ahora ---
-                    _eps = 1e-9
-                    _mask_nonzero = (_tabla_unica["Monto Anual (Antes)"].abs() > _eps) | (_tabla_unica["Monto Anual (Ahora)"].abs() > _eps)
-                    _tabla_unica = _tabla_unica[_mask_nonzero].sort_values(["Partida", "Actividad (Cronograma)"], kind="stable")
-
-                    def _bg_delta_cell(v):
-                        if pd.isna(v):
-                            return ""
-                        return "background-color:#fff3cd" if abs(v) != 0 else ""
-
-                    styled_unica = (
-                        _tabla_unica
-                        .style
-                        .format({
-                            "Monto Anual (Antes)": "${:,.2f}",
-                            "Monto Anual (Ahora)": "${:,.2f}",
-                            "Diferencia": "${:,.2f}"
-                        })
-                        .applymap(_bg_delta_cell, subset=["Diferencia"])
-                        .hide(axis="index")
-                    )
-
-                    # IMPORTANTE: usar HTML para renderizar el chip
-                    st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
-
-                    # ====== 3) Catálogo de partidas (COMPLETO, sin filtrar) ======
-                    with st.expander("📖 Catálogo de partidas (completo)"):
-                        q = st.text_input(
-                            "Filtrar por código, definición o validador",
-                            key=f"filtro_catalogo_full_{_fmt_id_meta(id_meta_sel)}"
-                        ).strip().lower()
-
-                        # Reusar columnas detectadas
-                        cat_full_cols = ["Partida_fmt"] + [c for c in [desc_col, restr_col, valid_col] if c]
-                        cat_full = CATALOGO_PARTIDAS[cat_full_cols].drop_duplicates().copy() if cat_full_cols else pd.DataFrame(columns=["Partida_fmt"])
-
-                        if q:
-                            cat_show = cat_full[
-                                cat_full.apply(
-                                    lambda r: q in f"{r.get('Partida_fmt','')} {r.get(desc_col,'')} {r.get(valid_col,'')}".lower(),
-                                    axis=1
-                                )
-                            ]
-                        else:
-                            cat_show = cat_full
-
-                        vista_tabla = st.toggle("Ver como tabla compacta", value=False, key=f"vista_tabla_full_{_fmt_id_meta(id_meta_sel)}")
-                        if cat_show.empty:
-                            st.markdown("_Sin coincidencias._")
-                        else:
-                            if vista_tabla:
-                                # Renombres seguros para mostrar
-                                rename_map2 = {"Partida_fmt": "Código"}
-                                if desc_col:  rename_map2[desc_col]  = "Definición"
-                                if restr_col: rename_map2[restr_col] = "Restringida"
-                                if valid_col: rename_map2[valid_col] = "Validador"
-                                df_tabla = cat_show.rename(columns=rename_map2)
-                                mostrar_cols = ["Código", "Definición"] + [c for c in ["Restringida", "Validador"] if c in df_tabla.columns]
-                                st.dataframe(
-                                    df_tabla[mostrar_cols], use_container_width=True, hide_index=True,
-                                    column_config={
-                                        "Código": st.column_config.TextColumn(width="small"),
-                                        "Definición": st.column_config.TextColumn(width="large"),
-                                        **({"Restringida": st.column_config.CheckboxColumn("🔒", help="Requiere validador", disabled=True, width="small")} if "Restringida" in df_tabla.columns else {}),
-                                        **({"Validador": st.column_config.TextColumn(width="small")} if "Validador" in df_tabla.columns else {}),
-                                    }
-                                )
-                            else:
-                                st.markdown('<div class="compact-list">', unsafe_allow_html=True)
-                                for _, r in cat_show.iterrows():
-                                    lock = ""
-                                    if restr_col and bool(r.get(restr_col)):
-                                        val = r.get(valid_col) or "N/A"
-                                        lock = f' <span class="chip chip--lock">🔒 {val}</span>'
-                                    nom = r.get(desc_col, "")
-                                    st.markdown(
-                                        f"**{r.get('Partida_fmt','')}** · {nom}{lock}",
-                                        unsafe_allow_html=True
-                                    )
-                                st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="compact-list">', unsafe_allow_html=True)
+                    for _, r in cat_show.iterrows():
+                        lock = ""
+                        if restr_col and bool(r.get(restr_col)):
+                            val = r.get(valid_col) or "N/A"
+                            lock = f' <span class="chip chip--lock">🔒 {val}</span>'
+                        nom = r.get(desc_col, "")
+                        st.markdown(
+                            f"**{r.get('Partida_fmt','')}** · {nom}{lock}",
+                            unsafe_allow_html=True
+                        )
+                    st.markdown("</div>", unsafe_allow_html=True)
 
 
     # ================== SUBTAB 3: Cumplimiento ==================
@@ -2134,6 +2259,7 @@ def df_stats(df: pd.DataFrame) -> dict:
 
 
 # ========= FIN BLOQUE 6 =========
+
 
 
 
