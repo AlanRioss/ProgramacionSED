@@ -653,8 +653,19 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+#======Helper de normalización de llave (ID vs Clave)===========
 
-
+def _norm_meta_val(meta_key: str, v):
+    """Normaliza el valor de meta según la llave elegida:
+    - Si es ID Meta -> usa _fmt_id_meta (quita .0)
+    - Si es Clave de Meta -> string limpio
+    """
+    if meta_key == "ID Meta":
+        return _fmt_id_meta(v)
+    # Clave de Meta
+    if pd.isna(v):
+        return ""
+    return str(v).strip()
 
 
 
@@ -2221,6 +2232,7 @@ with tabs[1]:
   
     
     
+
 
 
 
