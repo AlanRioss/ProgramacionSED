@@ -1211,7 +1211,12 @@ with tabs[1]:
 
             col_total1, col_total2 = st.columns(2)
             col_total1.metric("Cantidad Total (Ahora)", f"{total_ahora_cantidad:,.2f}", delta=f"{dif_cant:,.2f}")
-            col_total2.metric("Monto Total (Ahora)", f"${total_ahora_monto:,.2f}", delta=f"${dif_monto:,.2f}")
+            col_total2.metric(
+                "Monto Total (Ahora)",
+                f"${total_ahora_monto:,.2f}",
+                delta=f"{'-' if dif_monto < 0 else '+'}${abs(dif_monto):,.2f}"
+            )
+
 
             st.markdown("---")
             header_with_tooltip_distribucion()
@@ -2259,6 +2264,7 @@ with tabs[1]:
   
     
     
+
 
 
 
