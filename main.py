@@ -968,8 +968,7 @@ col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
 col_proy2.metric(
     "Monto Total (Ahora)",
     f"${monto_total_ahora:,.2f}",
-    delta=f"${diferencia_monto_total:,.2f}",
-    delta_color="normal"
+    delta=f"${diferencia_monto_total:,.2f}"
 )
 
 st.markdown("---")
@@ -2259,6 +2258,7 @@ with tabs[1]:
   
     
     
+
 
 
 
