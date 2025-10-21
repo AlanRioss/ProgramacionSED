@@ -172,19 +172,16 @@ def header_with_tooltip_distribucion():
         unsafe_allow_html=True
     )
 
-def _fmt_id_meta(x):
-    """Formatea ID Meta para etiquetas amigables (sin .0 si viene como float)."""
-    if pd.isna(x):
+def _fmt_id_meta(v):
+    """Formatea el ID Meta como cadena limpia sin .0 final."""
+    if pd.isna(v):
         return ""
     try:
-        nx = pd.to_numeric(x, errors="coerce")
-        if pd.notna(nx):
-            if float(nx).is_integer():
-                return str(int(nx))
-            return str(nx)
+        f = float(v)
+        return str(int(f)) if f.is_integer() else str(f)
     except Exception:
-        pass
-    return str(x)
+        return str(v).strip()
+
 
 def header_with_tooltip_meta(id_meta):
     """Encabezado 'Meta (ID): ...' con tooltip de 'Descripción de la Meta'."""
@@ -666,6 +663,26 @@ def _norm_meta_val(meta_key: str, v):
     if pd.isna(v):
         return ""
     return str(v).strip()
+    
+#======Helper de formato de ID/Clave Meta (seguro para concatenaciones)===========
+def _fmt_meta_val(v):
+    """Devuelve el valor de meta en formato de texto limpio.
+    - Convierte NaN o None en cadena vacía.
+    - Si es número flotante entero (ej. 123.0), lo convierte a '123'.
+    - Siempre devuelve str, para evitar errores de tipo al concatenar.
+    """
+    if pd.isna(v):
+        return ""
+    s = str(v).strip()
+    # Quita '.0' si es un número entero expresado como float
+    try:
+        f = float(s)
+        if f.is_integer():
+            return str(int(f))
+    except ValueError:
+        pass
+    return s
+
 
 
 
@@ -2232,6 +2249,7 @@ with tabs[1]:
   
     
     
+
 
 
 
