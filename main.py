@@ -803,7 +803,9 @@ else:
 # ========= BLOQUE 3 · CARGA DE HOJAS + LIMPIEZA + TOTALES + FILTRO POR CLAVE Q =========
 
 # Llave operativa de metas (según selección del usuario)
-META_COL = "ID Meta" if llave_opcion == "ID Meta" else "Clave de Meta"
+if isinstance(llave_opcion, str) and "ID Meta" in llave_opcion:
+    META_COL = "ID Meta"
+else:
 
 
 # ---- 3.1 Cargar Datos Generales (ambos cortes) ----
@@ -1137,13 +1139,14 @@ with tabs[1]:
     )
 
     metas_disponibles = metas_disponibles.sort_values("Etiqueta")
-
+   
     id_meta_label = st.selectbox(
         "Selecciona una Meta",
         [""] + metas_disponibles["Etiqueta"].tolist(),
-        key="filtro_meta"
+        key=f"filtro_meta_{META_COL}"
     )
-    id_meta_sel = id_meta_label.split(" - ")[0] if id_meta_label else None
+    id_meta_sel = id_meta_label.split(" - ", 1)[0] if id_meta_label else None
+
 
     # Subpestañas
     subtabs = st.tabs([
@@ -2254,6 +2257,7 @@ with tabs[1]:
   
     
     
+
 
 
 
