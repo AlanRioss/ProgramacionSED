@@ -968,8 +968,9 @@ col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
 col_proy2.metric(
     "Monto Total (Ahora)",
     f"${monto_total_ahora:,.2f}",
-    delta=f"${diferencia_monto_total:,.2f}"
+    delta=f"{'-' if diferencia_monto_total < 0 else '+'}${abs(diferencia_monto_total):,.2f}"
 )
+
 
 st.markdown("---")
 # ========= FIN BLOQUE 4 =========
@@ -2258,6 +2259,7 @@ with tabs[1]:
   
     
     
+
 
 
 
