@@ -665,15 +665,15 @@ def _norm_meta_val(meta_key: str, v):
     return str(v).strip()
     
 #======Helper de formato de ID/Clave Meta (seguro para concatenaciones)===========
-def _fmt_meta_val(v):
+def _fmt_meta_val(x):
     """Devuelve el valor de meta en formato de texto limpio.
     - Convierte NaN o None en cadena vacía.
     - Si es número flotante entero (ej. 123.0), lo convierte a '123'.
     - Siempre devuelve str, para evitar errores de tipo al concatenar.
     """
-    if pd.isna(v):
+    if pd.isna(x):
         return ""
-    s = str(v).strip()
+    s = str(x).strip()
     # Quita '.0' si es un número entero expresado como float
     try:
         f = float(s)
@@ -2254,6 +2254,7 @@ with tabs[1]:
   
     
     
+
 
 
 
