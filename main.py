@@ -1130,7 +1130,12 @@ with tabs[1]:
     def _fmt_meta_val(x):
         return _fmt_id_meta(x) if META_COL == "ID Meta" else ("" if pd.isna(x) else str(x))
 
-    metas_disponibles["Etiqueta"] = metas_disponibles[META_COL].apply(_fmt_meta_val) + " - " + metas_disponibles["Descripción de la Meta"].astype(str)
+    metas_disponibles["Etiqueta"] = (
+        metas_disponibles[META_COL].apply(_fmt_meta_val).astype(str)
+        + " - "
+        + metas_disponibles["Descripción de la Meta"].astype(str)
+    )
+
     metas_disponibles = metas_disponibles.sort_values("Etiqueta")
 
     id_meta_label = st.selectbox(
@@ -2249,6 +2254,7 @@ with tabs[1]:
   
     
     
+
 
 
 
