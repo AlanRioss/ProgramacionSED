@@ -1057,7 +1057,7 @@ with tabs[1]:
 
 
 #========Controles de cambios======================
-    with st.expander("📊 Control de cambios – Metas (Información)", expanded=True):
+    with st.expander("📊 Control de cambios – Metas (Información)", expanded=False):
         ICONO_ESTADO = {
         "✚ Nueva": "🗽 Nueva",
         "✖ Eliminada": "🗑️ Eliminada",
@@ -1873,7 +1873,7 @@ with tabs[1]:
 
 
                 # === Filtro: mostrar solo 'Ahora' y/o monto ≠ 0 (para el gráfico) + ORDEN DEL EJE Y
-                with st.expander("🔎 Filtros del Cronograma", expanded=True):
+                with st.expander("🔎 Filtros del Cronograma", expanded=False):
                     show_only_version_now = st.toggle(
                         "Mostrar solo versión 'Ahora'",
                         value=False,
@@ -2264,6 +2264,7 @@ with tabs[1]:
   
     
     
+
 
 
 
