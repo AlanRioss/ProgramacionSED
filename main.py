@@ -1428,7 +1428,7 @@ with tabs[1]:
 
         # --- Filtro de partidas (más limpio, dentro de un expander) ---
 
-        st.write("**Selecciona una meta para visualizar su calendarizado (Por default se muestra del proyecto completo)**")
+        st.write("**Selecciona una meta para visualizar su calendarizado (Sin meta filtrada se muestra del proyecto completo)**")
 
         with st.expander("🎚️ Filtro de partidas", expanded=False):
             col1, col2 = st.columns([3, 1])
@@ -2264,6 +2264,7 @@ with tabs[1]:
   
     
     
+
 
 
 
