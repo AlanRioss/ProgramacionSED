@@ -1525,6 +1525,18 @@ with tabs[1]:
         _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
         _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
 
+        # 🔧 Normalización de tipos antes del merge
+        for df in (_det_a, _det_h):
+            if "ID Meta" in df.columns:
+                df["ID Meta"] = df["ID Meta"].apply(_fmt_id_meta)
+            if "Clave de Meta" in df.columns:
+                df["Clave de Meta"] = df["Clave de Meta"].astype(str).str.strip()
+            if "Partida_fmt" in df.columns:
+                df["Partida_fmt"] = df["Partida_fmt"].astype(str).str.strip()
+            if "Clave de Actividad /Hito" in df.columns:
+                df["Clave de Actividad /Hito"] = df["Clave de Actividad /Hito"].astype(str).str.strip()
+
+        
         # Merge por Partida_fmt + Clave; la llave META_COL puede venir en A o en H → hacemos coalesce después
         _unificada = pd.merge(
             _det_a, _det_h,
@@ -2264,6 +2276,7 @@ with tabs[1]:
   
     
     
+
 
 
 
