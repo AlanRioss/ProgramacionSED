@@ -711,7 +711,7 @@ with st.sidebar:
     st.markdown("### 🔑 Llave para comparar metas")
     llave_opcion = st.radio(
         "¿Tus reportes ya cuentan con claves estandarizadas de metas? Selecciona Clave de meta:",
-        ["No, usar ID Meta", "Sí, usar Clave de Meta"],
+        ["Sí, usar Clave de Meta","No, usar ID Meta"],
         horizontal=True,
         key="llave_meta_opcion"
     )
@@ -2276,6 +2276,7 @@ with tabs[1]:
   
     
     
+
 
 
 
