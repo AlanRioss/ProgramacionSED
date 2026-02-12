@@ -143,7 +143,7 @@ else:
     Una vez cargados seleccionada una Clave Q, se mostrarán las distintas secciones comparativas para facilitar el análisis entre fechas de corte.
 
     ---
-    *Sin archivos a la mano? Dale clic al botón **Demo** en la barra lateral y descubre de qué es capaz esta app... sin compromiso, sin costo, y sin que tu jefe se entere.*
+    *¿Sin archivos a la mano? Dale clic al botón **Demo** en la barra lateral y descubre de qué es capaz esta app... sin compromiso, sin costo.*
     """)
     st.stop()
 
@@ -313,8 +313,7 @@ with tabs[0]:
             f'Clave Q: "{clave_q}"',
             f'Nombre del Proyecto: "{nombre_proyecto}"',
         ] + [f'{c}: "{fila_ahora.get(c, "")}"' for c in CAMPOS_TEXTO]
-        with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
-            st.code("\n".join(lineas), language="plaintext")
+
 
 
 # ---------------------- TAB 2: METAS (delegado) ----------------------
