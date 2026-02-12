@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+    <title>mun_test_wgs</title>
+    <layers>
+        <layer>
+            <datasource>
+                <type>ESRI Shapefile</type>
+                <path>mun_test_wgs.shp</path>
+            </datasource>
+            <layername>mun_test_wgs</layername>
+            <title/>
+            <variable_order>
+                <time_ids>
+                    <id>time 0</id>
+                </time_ids>
+                <var>cve_mun</var>
+                <var>centroide</var>
+                <var>nom_mun</var>
+                <var>maxmin</var>
+                <var>nom_mun_1</var>
+                <var>
+                    Unos
+                    <displayed_decimals>6</displayed_decimals>
+                </var>
+                <var>Delitos_19</var>
+                <var>Delitos_20</var>
+                <var>
+                    Aumen_Del
+                    <displayed_decimals>6</displayed_decimals>
+                </var>
+                <var>
+                    Au_Red_Del
+                    <meta_data>
+                        <original_variable>Aumen_Del</original_variable>
+                        <selection_range>[0.000000, 100.000000]</selection_range>
+                    </meta_data>
+                </var>
+                <var>
+                    Inver_n_19
+                    <displayed_decimals>6</displayed_decimals>
+                </var>
+                <var>
+                    Inver_n_20
+                    <displayed_decimals>6</displayed_decimals>
+                </var>
+                <var>
+                    Aumen_Inv
+                    <displayed_decimals>6</displayed_decimals>
+                </var>
+                <var>
+                    Au_Red_Inv
+                    <meta_data>
+                        <original_variable>Aumen_Inv</original_variable>
+                        <selection_range>[0.000000, 100.000000]</selection_range>
+                    </meta_data>
+                </var>
+                <var>CL</var>
+            </variable_order>
+            <custom_classifications>
+                <classification_definition>
+                    <title>Custom Breaks (Au_Red_Del)</title>
+                    <type>custom</type>
+                    <num_cats>2</num_cats>
+                    <automatic_labels>true</automatic_labels>
+                    <assoc_db_fld_name>Au_Red_Del</assoc_db_fld_name>
+                    <uniform_dist_min>0</uniform_dist_min>
+                    <uniform_dist_max>1</uniform_dist_max>
+                    <breaks>
+                        <break>0</break>
+                    </breaks>
+                    <names>
+                        <name>&lt; 0.000</name>
+                        <name>&gt;= 0.000</name>
+                    </names>
+                    <colors/>
+                    <color_scheme>sequential</color_scheme>
+                </classification_definition>
+                <classification_definition>
+                    <title>Custom Breaks (Au_Red_Del) 1</title>
+                    <type>custom</type>
+                    <num_cats>6</num_cats>
+                    <automatic_labels>true</automatic_labels>
+                    <assoc_db_fld_name>Au_Red_Del</assoc_db_fld_name>
+                    <uniform_dist_min>0</uniform_dist_min>
+                    <uniform_dist_max>1</uniform_dist_max>
+                    <breaks>
+                        <break>-1</break>
+                        <break>-0.90000000000000002</break>
+                        <break>0</break>
+                        <break>0.3407928125429861</break>
+                        <break>1.2033247555207547</break>
+                    </breaks>
+                    <names>
+                        <name>&lt; -1.000</name>
+                        <name>[-1, -0.900)</name>
+                        <name>[-0.900, 0)</name>
+                        <name>[0, 0.341]</name>
+                        <name>(0.341, 1.203]</name>
+                        <name>&gt; 1.203</name>
+                    </names>
+                    <color_scheme>diverging</color_scheme>
+                </classification_definition>
+                <classification_definition>
+                    <title>Custom Breaks (Aumen_Del)</title>
+                    <type>custom</type>
+                    <num_cats>4</num_cats>
+                    <automatic_labels>false</automatic_labels>
+                    <assoc_db_fld_name>Au_Red_Del</assoc_db_fld_name>
+                    <uniform_dist_min>-1</uniform_dist_min>
+                    <uniform_dist_max>1</uniform_dist_max>
+                    <breaks>
+                        <break>-0.25</break>
+                        <break>0</break>
+                        <break>0.25</break>
+                    </breaks>
+                    <names>
+                        <name>&lt; -0.25</name>
+                        <name>[-0.25, 0)</name>
+                        <name>[0, .25)</name>
+                        <name>&gt;0.25</name>
+                    </names>
+                    <color_scheme>diverging</color_scheme>
+                </classification_definition>
+            </custom_classifications>
+            <weights_entries>
+                <weights>
+                    <title>queen_1</title>
+                    <default/>
+                    <meta_info>
+                        <weights_type>queen</weights_type>
+                        <order>1</order>
+                        <inc_lower_orders>false</inc_lower_orders>
+                        <path>queen_1.gal</path>
+                        <id_variable>cve_mun</id_variable>
+                        <symmetry>symmetric</symmetry>
+                        <num_observations>46</num_observations>
+                        <min_neighbors>1</min_neighbors>
+                        <max_neighbors>10</max_neighbors>
+                        <mean_neighbors>4.4347826086956523</mean_neighbors>
+                        <median_neighbors>4</median_neighbors>
+                        <non_zero_perc>9.640831758034027</non_zero_perc>
+                    </meta_info>
+                </weights>
+                <weights>
+                    <title>queen_2</title>
+                    <meta_info>
+                        <weights_type>queen</weights_type>
+                        <order>2</order>
+                        <inc_lower_orders>true</inc_lower_orders>
+                        <path>queen_2.gal</path>
+                        <id_variable>cve_mun</id_variable>
+                        <symmetry>symmetric</symmetry>
+                        <num_observations>46</num_observations>
+                        <min_neighbors>3</min_neighbors>
+                        <max_neighbors>25</max_neighbors>
+                        <mean_neighbors>12.608695652173912</mean_neighbors>
+                        <median_neighbors>12.5</median_neighbors>
+                        <non_zero_perc>27.410207939508506</non_zero_perc>
+                    </meta_info>
+                </weights>
+            </weights_entries>
+            <default_vars>
+                <default_var>
+                    <name>Aumen_Del</name>
+                    <time_id>time 0</time_id>
+                </default_var>
+                <default_var>
+                    <name>Aumen_Inv</name>
+                    <time_id>time 0</time_id>
+                </default_var>
+                <default_var>
+                    <name>Aumen_Del</name>
+                    <time_id>time 0</time_id>
+                </default_var>
+                <default_var>
+                    <name>Au_Red_Del</name>
+                    <time_id>time 0</time_id>
+                </default_var>
+            </default_vars>
+        </layer>
+    </layers>
+</project>
