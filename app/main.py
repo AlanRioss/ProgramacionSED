@@ -25,7 +25,6 @@ from ui_components import (
     inject_css, titulo_con_tooltip, resaltar_ortografia_html,
 )
 from tab_metas import render_tab_metas
-from diagnostics import render_diagnostics_sidebar, render_diagnostics_summary
 
 # ========= Configuración inicial (debe ser la primera llamada a st.*) =========
 st.set_page_config(layout="wide")
@@ -450,18 +449,3 @@ with tabs[2]:
             _render_categoria(c["etq"], c["nombre"], c["carac"], c["cant"], ben_a, ben_h)
 
 
-# ========= DIAGNÓSTICOS =========
-render_diagnostics_sidebar()
-
-render_diagnostics_summary({
-    "datos_antes": datos_antes,
-    "datos_ahora": datos_ahora,
-    "metas_antes": metas_antes,
-    "metas_ahora": metas_ahora,
-    "metas_crono_antes": metas_crono_antes,
-    "metas_crono_ahora": metas_crono_ahora,
-    "metas_partidas_antes": metas_partidas_antes,
-    "metas_partidas_ahora": metas_partidas_ahora,
-    "cumplimiento_antes": cumplimiento_antes,
-    "cumplimiento_ahora": cumplimiento_ahora,
-})
