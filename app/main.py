@@ -141,6 +141,9 @@ else:
     **¡Ahora incluye un comparativo para Beneficiarios 👥!** si lo necesitas solo carga los archivos adicionales 📑.
 
     Una vez cargados seleccionada una Clave Q, se mostrarán las distintas secciones comparativas para facilitar el análisis entre fechas de corte.
+
+    ---
+    *Sin archivos a la mano? Dale clic al botón **Demo** en la barra lateral y descubre de qué es capaz esta app... sin compromiso, sin costo, y sin que tu jefe se entere.*
     """)
     st.stop()
 
