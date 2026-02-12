@@ -100,6 +100,16 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
         .drop_duplicates()
         .copy()
     )
+    # Filtrar también filas con valores vacíos o solo espacios
+    metas_disponibles = metas_disponibles[
+        metas_disponibles[META_COL].astype(str).str.strip().ne("")
+    ]
+    if metas_disponibles.empty:
+        st.warning(
+            f"⚠️ Los reportes no contienen datos en la columna **{META_COL}**. "
+            "Cambia la llave a **ID Meta** en la barra lateral."
+        )
+        return
     metas_disponibles["_key"] = metas_disponibles[META_COL].apply(lambda x: _fmt_meta_val(META_COL, x))
     metas_disponibles["Etiqueta"] = (
         metas_disponibles["_key"] + " - " + metas_disponibles["Descripción de la Meta"].astype(str)
