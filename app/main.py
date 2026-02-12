@@ -25,6 +25,7 @@ from ui_components import (
     inject_css, titulo_con_tooltip, resaltar_ortografia_html,
 )
 from tab_metas import render_tab_metas
+from diagnostics import render_diagnostics_sidebar, render_diagnostics_summary
 
 # ========= Configuración inicial (debe ser la primera llamada a st.*) =========
 st.set_page_config(layout="wide")
@@ -71,7 +72,7 @@ with st.sidebar:
     st.markdown("### 🔑 Llave para comparar metas")
     llave_opcion = st.radio(
         "¿Tus reportes ya cuentan con claves estandarizadas de metas? Selecciona Clave de meta:",
-        ["No, usar ID Meta", "Sí, usar Clave de Meta"],
+        ["Sí, usar Clave de Meta", "No, usar ID Meta"],
         horizontal=True,
         key="llave_meta_opcion",
     )
@@ -312,7 +313,8 @@ with tabs[0]:
             f'Clave Q: "{clave_q}"',
             f'Nombre del Proyecto: "{nombre_proyecto}"',
         ] + [f'{c}: "{fila_ahora.get(c, "")}"' for c in CAMPOS_TEXTO]
-
+        #with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
+        #    st.code("\n".join(lineas), language="plaintext")
 
 
 # ---------------------- TAB 2: METAS (delegado) ----------------------
@@ -449,3 +451,18 @@ with tabs[2]:
             _render_categoria(c["etq"], c["nombre"], c["carac"], c["cant"], ben_a, ben_h)
 
 
+# ========= DIAGNÓSTICOS =========
+render_diagnostics_sidebar()
+
+render_diagnostics_summary({
+    "datos_antes": datos_antes,
+    "datos_ahora": datos_ahora,
+    "metas_antes": metas_antes,
+    "metas_ahora": metas_ahora,
+    "metas_crono_antes": metas_crono_antes,
+    "metas_crono_ahora": metas_crono_ahora,
+    "metas_partidas_antes": metas_partidas_antes,
+    "metas_partidas_ahora": metas_partidas_ahora,
+    "cumplimiento_antes": cumplimiento_antes,
+    "cumplimiento_ahora": cumplimiento_ahora,
+})
