@@ -291,29 +291,33 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
 # ============ Spell-check ============
 
 @st.cache_data(show_spinner=False)
-def resaltar_ortografia_html(texto: str) -> tuple[str, int]:
+def resaltar_ortografia_html(texto: str) -> tuple[str, int, str]:
     """
-    Devuelve (html, n_errores). El texto en HTML subraya en rojo ondulado
-    los posibles errores ortográficos/gramaticales.
+    Devuelve (html, n_errores, texto_corregido).
 
-    n_errores es -1 si no se pudo verificar (LanguageTool no disponible),
-    0 si se verificó y no hay errores, o el número de errores detectados.
+    - html: el texto subrayando en rojo ondulado los posibles errores.
+    - n_errores: -1 si no se pudo verificar (LanguageTool no disponible),
+      0 si se verificó y no hay errores, o el número de errores detectados.
+    - texto_corregido: texto con la primera sugerencia de LanguageTool
+      aplicada a cada error (o el texto original si no hay sugerencia
+      para ese error).
     """
     s = str(texto or "")
     if not s:
-        return "", 0
+        return "", 0, ""
     if _LT_TOOL_ES is None:
-        return html.escape(s), -1
+        return html.escape(s), -1, s
 
     try:
         matches = _LT_TOOL_ES.check(s)
     except Exception:
-        return html.escape(s), -1
+        return html.escape(s), -1, s
 
     if not matches:
-        return html.escape(s), 0
+        return html.escape(s), 0, s
 
     partes = []
+    corregido = []
     ultimo = 0
     n_errores = 0
     for m in matches:
@@ -321,10 +325,17 @@ def resaltar_ortografia_html(texto: str) -> tuple[str, int]:
         end = m.offset + m.error_length
         if start < ultimo:
             continue
-        partes.append(html.escape(s[ultimo:start]))
+        previo = s[ultimo:start]
+        partes.append(html.escape(previo))
+        corregido.append(previo)
+
         partes.append(f"<span class='spell-error'>{html.escape(s[start:end])}</span>")
+        corregido.append(m.replacements[0] if m.replacements else s[start:end])
+
         ultimo = end
         n_errores += 1
 
     partes.append(html.escape(s[ultimo:]))
-    return "".join(partes), n_errores
+    corregido.append(s[ultimo:])
+
+    return "".join(partes), n_errores, "".join(corregido)
