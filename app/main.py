@@ -22,7 +22,8 @@ from loaders import (
     cargar_beneficiarios_filtrado,
 )
 from ui_components import (
-    inject_css, titulo_con_tooltip, resaltar_ortografia_html,
+    inject_css, titulo_con_tooltip,
+    analizar_ortografia, segmentos_a_html, render_revision_ortografica_interactiva,
 )
 from tab_metas import render_tab_metas
 
@@ -250,7 +251,8 @@ with tabs[0]:
             val_a = fila_antes.get(campo, "") if fila_antes is not None else ""
             val_h = fila_ahora.get(campo, "")
             estado = estados[campo]
-            ahora_spell, n_errores_orto, texto_corregido = resaltar_ortografia_html(val_h)
+            n_errores_orto, segmentos_orto = analizar_ortografia(val_h)
+            ahora_spell = segmentos_a_html(segmentos_orto)
 
             if estado == "nuevo":
                 titulo_con_tooltip(campo, seccion="datos_generales")
@@ -289,12 +291,8 @@ with tabs[0]:
                     elif n_errores_orto < 0:
                         st.caption("Revisión ortográfica no disponible.")
                     else:
-                        st.markdown(
-                            f"<div style='border:1px dashed #fecaca;padding:6px;word-break:break-word'>{ahora_spell}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.caption("Texto con las correcciones sugeridas aplicadas — revísalo antes de copiar:")
-                        st.code(texto_corregido, language="plaintext")
+                        st.caption("Clic en una palabra marcada para ver sugerencias y sustituirla.")
+                        render_revision_ortografica_interactiva(segmentos_orto, key=f"orto_{campo}")
 
             else:  # sin_cambios
                 with st.expander(f"✔ {campo} — Sin cambios", expanded=False):
