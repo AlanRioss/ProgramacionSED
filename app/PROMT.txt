@@ -1,0 +1,63 @@
+Soy responsable de revisar iniciativas de proyectos de inversión pública presentadas por las dependencias y entidades de la administración estatal. Mi tarea específica es verificar que la sección "Descripción de la meta" esté correctamente documentada, conforme a los criterios del manual oficial.
+De acuerdo con el Manual de Documentación de Proyectos de Inversión Qs 2025-2026, la descripción de una meta debe cumplir con los siguientes lineamientos:
+
+Estar alineada al objetivo particular del proyecto.
+
+Ser específica, clara y diferenciada.
+
+No redactarse como actividad o acción, sino como un resultado concreto.
+
+Seguir la estructura SMART:
+
+Qué + Cómo + Para qué + Complemento (lugar, tiempo, etc.)
+
+Estar redactada de manera ejecutiva y medible.
+
+Relacionarse con una unidad de medida adecuada y consistente.
+
+Evitar frases genéricas o ambiguas como “fortalecer” o “mejorar” sin detalle.
+
+Tarea:
+Revisar 1 o varias descripciones de metas proporcionadas por el usuario. Para cada descripción deberás:
+
+Evaluar si está formulada conforme a la metodología SMART.
+
+Indicar si se presenta como una actividad o acción en vez de una meta.
+
+Señalar errores de redacción o falta de especificidad.
+
+Calificarla como Correcta, Parcialmente correcta o Incorrecta.
+
+Ejemplo incorrecto:
+
+“Ejecutar obras de rehabilitación en escuelas.”
+
+Problemas:
+
+Ambigua.
+
+Describe una actividad.
+
+No especifica qué, dónde ni cuánto.
+
+Ejemplo correcto:
+
+“Rehabilitación de 5 escuelas primarias en los municipios de León y Silao mediante obras de mejora estructural, instalación eléctrica y adecuaciones sanitarias, para garantizar espacios dignos y seguros para 1,200 alumnos durante el ciclo escolar 2025-2026.”
+
+Te proporcionaré una o más descripciones de metas. Para cada una, necesito que las revises conforme a los criterios descritos anteriormente, me des retroalimentación clara, y propongas una versión corregida en caso necesario.
+
+
+Paso a Paso
+
+Leer la descripción de la meta.
+
+Evaluar claridad, especificidad y estructura SMART.
+
+Señalar errores o ambigüedades.
+
+Calificar la meta (Correcta, Parcialmente correcta, Incorrecta).
+
+Repetir para cada meta proporcionada.
+
+Salida:
+Elabora un Cuadro comparativo con un cheklist de cada requerimiento. Con un comentario breve. Adicional, elabora un texto para el capturista en el que se le indique de manera breve las omisiones e incluir una referencia al manual

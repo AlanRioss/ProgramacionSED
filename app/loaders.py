@@ -17,23 +17,6 @@ from helpers import (
     construir_control_cambios_metas_info,
 )
 
-# --- Import condicional de geopandas / folium / streamlit_folium ---
-try:
-    import geopandas as gpd
-    _HAS_GPD = True
-except ImportError:
-    gpd = None
-    _HAS_GPD = False
-
-try:
-    import folium
-    from streamlit_folium import st_folium
-    _HAS_FOLIUM = True
-except ImportError:
-    folium = None
-    st_folium = None
-    _HAS_FOLIUM = False
-
 
 # ============ Constante unificada (antes duplicada en L786 y L875) ============
 
@@ -117,19 +100,6 @@ def agregar_totales(df: pd.DataFrame) -> pd.DataFrame:
     out["Cantidad Total"] = out.filter(like="Cantidad").sum(axis=1, skipna=True)
     out["Monto Total"] = out.filter(like="Monto").sum(axis=1, skipna=True)
     return out
-
-
-@st.cache_data(show_spinner=False)
-def cargar_shapefile_municipal():
-    """Carga el shapefile municipal. Devuelve GeoDataFrame o None si geopandas no está."""
-    if not _HAS_GPD:
-        return None
-    try:
-        gdf = gpd.read_file("app/gtoSHP/mun_test_wgs.shp").to_crs(epsg=4326)
-        return gdf
-    except Exception as e:
-        st.error(f"Error al cargar el shapefile: {e}")
-        return None
 
 
 _GEOJSON_PATH = pathlib.Path("app/gtoSHP/mun_test_wgs.geojson")

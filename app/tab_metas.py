@@ -29,6 +29,97 @@ from ui_components import (
 
 
 
+def _render_resumen_cambios(tabla_cc: pd.DataFrame, meta_key: str) -> None:
+    """Resumen programático de cambios entre cortes (sin API externa)."""
+    CAMPOS_LEGIBLES = {
+        "Desc":       "Descripción",
+        "UM":         "Unidad de medida",
+        "Municipios": "Municipios",
+        "RP":         "Registro presupuestal",
+        "Cant. Est.": "Cantidad estatal",
+        "Mto. Est.":  "Monto estatal",
+        "Cant. Fed.": "Cantidad federal",
+        "Mto. Fed.":  "Monto federal",
+        "Cant. Mun.": "Cantidad municipal",
+        "Mto. Mun.":  "Monto municipal",
+    }
+
+    n_nuevas      = int((tabla_cc["Estado"] == "✚ Nueva").sum())
+    n_eliminadas  = int((tabla_cc["Estado"] == "✖ Eliminada").sum())
+    n_modificadas = int((tabla_cc["Estado"] == "✎ Modificada").sum())
+    n_sin_cambios = int((tabla_cc["Estado"] == "✔ Sin cambios").sum())
+    hay_cambios   = (n_nuevas + n_eliminadas + n_modificadas) > 0
+    delta_total   = float(tabla_cc["Δ total $"].sum()) if "Δ total $" in tabla_cc.columns else 0.0
+
+    other_key = "Clave de Meta" if meta_key == "ID Meta" else "ID Meta"
+
+    def _id_line(row):
+        id_val    = str(row.get(meta_key, "?")).strip()
+        other_val = str(row.get(other_key, "")).strip()
+        extra = f" · {other_key}: `{other_val}`" if other_val not in ("", "nan") else ""
+        return id_val, extra
+
+    # --- 4 métricas ---
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🆕 Nuevas",      n_nuevas)
+    c2.metric("🗑️ Eliminadas",  n_eliminadas)
+    c3.metric("🔄 Modificadas", n_modificadas)
+    c4.metric("✔️ Sin cambios", n_sin_cambios)
+
+    if not hay_cambios:
+        st.success("No hubo cambios entre cortes.")
+        return
+
+    # --- Balance neto ---
+    signo = "+" if delta_total >= 0 else ""
+    color = "#2e7d32" if delta_total >= 0 else "#c62828"
+    st.markdown(
+        f"**Balance neto de monto:** "
+        f"<span style='color:{color}; font-weight:bold'>{signo}${delta_total:,.0f} MXN</span>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # --- Nuevas ---
+    if n_nuevas > 0:
+        nuevas = tabla_cc[tabla_cc["Estado"] == "✚ Nueva"]
+        with st.expander(f"🆕 Metas nuevas — {n_nuevas}", expanded=True):
+            for _, row in nuevas.iterrows():
+                id_val, extra = _id_line(row)
+                delta = float(row.get("Δ total $", 0) or 0)
+                st.markdown(f"- **{id_val}**{extra} → Monto: `${delta:,.0f} MXN`")
+
+    # --- Eliminadas ---
+    if n_eliminadas > 0:
+        eliminadas = tabla_cc[tabla_cc["Estado"] == "✖ Eliminada"]
+        with st.expander(f"🗑️ Metas eliminadas — {n_eliminadas}", expanded=True):
+            for _, row in eliminadas.iterrows():
+                id_val, extra = _id_line(row)
+                delta = float(row.get("Δ total $", 0) or 0)
+                st.markdown(f"- **{id_val}**{extra} · Monto retirado: `${abs(delta):,.0f} MXN`")
+
+    # --- Modificadas (ordenadas por |Δ| desc) ---
+    if n_modificadas > 0:
+        modificadas = (
+            tabla_cc[tabla_cc["Estado"] == "✎ Modificada"]
+            .assign(_abs=tabla_cc["Δ total $"].abs())
+            .sort_values("_abs", ascending=False)
+        )
+        with st.expander(f"🔄 Metas modificadas — {n_modificadas}", expanded=True):
+            for _, row in modificadas.iterrows():
+                id_val, extra = _id_line(row)
+                delta = float(row.get("Δ total $", 0) or 0)
+                campos = [desc for col, desc in CAMPOS_LEGIBLES.items() if row.get(col) == "●"]
+                signo_d   = "+" if delta >= 0 else ""
+                delta_str = f" · Δ `{signo_d}${delta:,.0f} MXN`" if delta != 0 else " · Sin cambio de monto"
+                campos_str = ", ".join(campos) if campos else "—"
+                st.markdown(
+                    f"- **{id_val}**{extra}{delta_str}  \n"
+                    f"  Campos modificados: {campos_str}"
+                )
+
+
 @st.fragment
 def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                 partidas_antes, partidas_ahora, cumpl_antes, cumpl_ahora,
@@ -38,60 +129,12 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
     if metas_antes.empty:
         st.info("🆕 Este proyecto no existía en el corte anterior. Se muestran solo las metas actuales.")
 
-    # ========== Control de cambios ==========
-    with st.expander("📊 Control de cambios – Metas (Información)", expanded=True):
-        ICONO_ESTADO = {
-            "✚ Nueva": "🗽 Nueva",
-            "✖ Eliminada": "🗑️ Eliminada",
-            "✎ Modificada": "🔄 Modificada",
-            "✔ Sin cambios": "🟰 Sin cambios",
-        }
-        ICONO_CAMBIO = {"●": "🚨", "○": "➖"}
-
-        st.caption("Comparativo rápido a nivel proyecto (corte Antes vs Ahora).")
-
-        tabla_cc = control_cambios_metas_cached(metas_antes, metas_ahora, META_COL)
-        tabla_show = tabla_cc.copy()
-
-        estado_str = tabla_show["Estado"].astype(str)
-        tabla_show["Estado (icono)"] = estado_str.map(ICONO_ESTADO).fillna(estado_str)
-
-        cols_campos = [
-            "Desc", "UM", "Municipios", "RP",
-            "Cant. Est.", "Mto. Est.", "Cant. Fed.", "Mto. Fed.", "Cant. Mun.", "Mto. Mun.",
-        ]
-        for c in cols_campos:
-            if c in tabla_show.columns:
-                tabla_show[c] = tabla_show[c].astype(object).replace(ICONO_CAMBIO)
-
-        if "Δ total $" in tabla_show.columns:
-            tabla_show["Δ total $"] = tabla_show["Δ total $"].apply(
-                lambda v: f"${v:,.0f}" if pd.notna(v) else "—"
-            )
-
-        estado_sel = st.multiselect(
-            "Filtrar por estado",
-            options=["✚ Nueva", "✖ Eliminada", "✎ Modificada", "✔ Sin cambios"],
-            default=["✚ Nueva", "✖ Eliminada", "✎ Modificada", "✔ Sin cambios"],
-        )
-        if estado_sel:
-            tabla_filtrada = tabla_show[tabla_show["Estado"].isin(estado_sel)].reset_index(drop=True)
-        else:
-            tabla_filtrada = tabla_show
-
-        columnas_vista = [
-            "Estado (icono)", "ID Meta", "Clave de Meta",
-            "Desc", "UM", "Municipios", "RP",
-            "Cant. Est.", "Mto. Est.", "Cant. Fed.", "Mto. Fed.", "Cant. Mun.", "Mto. Mun.",
-            "Δ total $",
-        ]
-        columnas_vista = [c for c in columnas_vista if c in tabla_filtrada.columns]
-
-        st.dataframe(
-            tabla_filtrada[columnas_vista],
-            use_container_width=True,
-            hide_index=True,
-        )
+    # ========== Resumen de cambios ==========
+    st.markdown("#### 📊 Resumen de cambios – Metas")
+    st.caption("Comparativo a nivel proyecto (corte Antes vs Ahora).")
+    tabla_cc = control_cambios_metas_cached(metas_antes, metas_ahora, META_COL)
+    _render_resumen_cambios(tabla_cc, META_COL)
+    st.markdown("---")
 
     # ========== Selector de meta ==========
     metas_disponibles = (
@@ -215,43 +258,54 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
             st.markdown("---")
             header_with_tooltip_distribucion()
 
-            # Mapa binario de municipios participantes
-            municipios_meta = set(
-                df_ahora_meta["Municipio"].dropna().unique().tolist()
-                + (df_antes_meta["Municipio"].dropna().unique().tolist() if not df_antes_meta.empty else [])
-            )
-            municipios_norm = {_norm_txt(m) for m in municipios_meta}
+            # Mapa de participación municipal: distingue entre corte anterior y actual
+            mpios_norm_antes = {_norm_txt(m) for m in df_antes_meta["Municipio"].dropna()} if not df_antes_meta.empty else set()
+            mpios_norm_ahora = {_norm_txt(m) for m in df_ahora_meta["Municipio"].dropna()}
+
+            por_determinar_antes  = "POR DETERMINAR"   in mpios_norm_antes
+            por_determinar_ahora  = "POR DETERMINAR"   in mpios_norm_ahora
+            cobertura_estatal_antes = "COBERTURA ESTATAL" in mpios_norm_antes
+            cobertura_estatal_ahora = "COBERTURA ESTATAL" in mpios_norm_ahora
 
             geojson = cargar_geojson_municipal()
             mostrar_mapa = False
             fig_mapa = None
 
-            por_determinar = "POR DETERMINAR" in municipios_norm
-            cobertura_estatal = "COBERTURA ESTATAL" in municipios_norm
+            hay_municipios = bool(mpios_norm_antes or mpios_norm_ahora)
 
-            if geojson and municipios_norm:
+            if geojson and hay_municipios:
+                _ORDEN_CAT = ["Permanece", "Se agregó", "Se retiró", "Sin participación"]
+                _COLOR_MAP  = {
+                    "Permanece":         "#1e40af",
+                    "Se agregó":         "#15803d",
+                    "Se retiró":         "#f97316",
+                    "Sin participación": "#e5e7eb",
+                }
+
                 datos_mapa = []
                 for feat in geojson["features"]:
                     nom = feat["properties"]["nom_mun"]
-                    if por_determinar:
-                        en_meta = False
-                    elif cobertura_estatal:
-                        en_meta = True
+                    n = _norm_txt(nom)
+                    en_antes = False if por_determinar_antes  else (True if cobertura_estatal_antes  else n in mpios_norm_antes)
+                    en_ahora = False if por_determinar_ahora  else (True if cobertura_estatal_ahora  else n in mpios_norm_ahora)
+                    if en_antes and en_ahora:
+                        estado = "Permanece"
+                    elif en_ahora:
+                        estado = "Se agregó"
+                    elif en_antes:
+                        estado = "Se retiró"
                     else:
-                        en_meta = _norm_txt(nom) in municipios_norm
-                    datos_mapa.append({"Municipio": nom, "en_meta": en_meta})
+                        estado = "Sin participación"
+                    datos_mapa.append({"Municipio": nom, "Participación": estado})
 
                 df_mapa = pd.DataFrame(datos_mapa)
-                df_mapa["Participación"] = df_mapa["en_meta"].map(
-                    {True: "En meta", False: "Sin participación"}
-                )
 
-                color_map = {
-                    "En meta": "#b20d30",
-                    "Sin participación": "#e5e7eb",
-                }
-                if por_determinar:
-                    color_map["Sin participación"] = "#fecaca"
+                cats_presentes = df_mapa["Participación"].unique()
+                color_map_fig  = {k: v for k, v in _COLOR_MAP.items()  if k in cats_presentes}
+                orden_fig      = [c for c in _ORDEN_CAT if c in cats_presentes]
+
+                if por_determinar_ahora:
+                    color_map_fig["Sin participación"] = "#fecaca"
 
                 fig_mapa = px.choropleth(
                     df_mapa,
@@ -259,7 +313,8 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     locations="Municipio",
                     featureidkey="properties.nom_mun",
                     color="Participación",
-                    color_discrete_map=color_map,
+                    color_discrete_map=color_map_fig,
+                    category_orders={"Participación": orden_fig},
                     hover_data={"Participación": True, "Municipio": True},
                 )
                 fig_mapa.update_geos(fitbounds="locations", visible=False)
@@ -295,7 +350,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
             if mostrar_mapa and col_mapa is not None:
                 with col_mapa:
-                    if por_determinar:
+                    if por_determinar_ahora:
                         st.error("La distribución territorial indica **\"Por Determinar\"**. Se deben asignar municipios.")
                     st.plotly_chart(fig_mapa, use_container_width=True)
                     mc1, mc2, mc3 = st.columns(3)
