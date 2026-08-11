@@ -1,0 +1,12 @@
+[server]
+headless = true
+maxUploadSize = 300          # MB (ajusta si tus Excel son grandes)
+enableXsrfProtection = true
+fileWatcherType = "auto"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#b20d30"

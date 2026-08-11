@@ -313,8 +313,8 @@ with tabs[0]:
             f'Clave Q: "{clave_q}"',
             f'Nombre del Proyecto: "{nombre_proyecto}"',
         ] + [f'{c}: "{fila_ahora.get(c, "")}"' for c in CAMPOS_TEXTO]
-        with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
-            st.code("\n".join(lineas), language="plaintext")
+        #with st.expander("📋 Texto estructurado para evaluación en ChatGPT"):
+        #    st.code("\n".join(lineas), language="plaintext")
 
 
 # ---------------------- TAB 2: METAS (delegado) ----------------------
