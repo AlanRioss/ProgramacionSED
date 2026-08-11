@@ -318,7 +318,7 @@ def resaltar_ortografia_html(texto: str) -> tuple[str, int]:
     n_errores = 0
     for m in matches:
         start = m.offset
-        end = m.offset + m.errorLength
+        end = m.offset + m.error_length
         if start < ultimo:
             continue
         partes.append(html.escape(s[ultimo:start]))
