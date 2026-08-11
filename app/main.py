@@ -250,7 +250,7 @@ with tabs[0]:
             val_a = fila_antes.get(campo, "") if fila_antes is not None else ""
             val_h = fila_ahora.get(campo, "")
             estado = estados[campo]
-            ahora_spell, n_errores_orto = resaltar_ortografia_html(val_h)
+            ahora_spell, n_errores_orto, texto_corregido = resaltar_ortografia_html(val_h)
 
             if estado == "nuevo":
                 titulo_con_tooltip(campo, seccion="datos_generales")
@@ -293,6 +293,8 @@ with tabs[0]:
                             f"<div style='border:1px dashed #fecaca;padding:6px;word-break:break-word'>{ahora_spell}</div>",
                             unsafe_allow_html=True,
                         )
+                        st.caption("Texto con las correcciones sugeridas aplicadas — revísalo antes de copiar:")
+                        st.code(texto_corregido, language="plaintext")
 
             else:  # sin_cambios
                 with st.expander(f"✔ {campo} — Sin cambios", expanded=False):
