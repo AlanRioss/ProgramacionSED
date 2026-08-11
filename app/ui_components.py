@@ -5,7 +5,9 @@ Cadena de dependencias: manual_extractos <- helpers <- loaders <- ui_components
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import html
+import json as _json
 
 from manual_extractos import MANUAL
 from helpers import _fmt_id_meta, inferir_tipo_desde_clave_q, _ACCION_KEYS
@@ -291,33 +293,32 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
 # ============ Spell-check ============
 
 @st.cache_data(show_spinner=False)
-def resaltar_ortografia_html(texto: str) -> tuple[str, int, str]:
+def analizar_ortografia(texto: str) -> tuple[int, list[dict]]:
     """
-    Devuelve (html, n_errores, texto_corregido).
+    Revisa el texto con LanguageTool y lo parte en segmentos.
 
-    - html: el texto subrayando en rojo ondulado los posibles errores.
+    Devuelve (n_errores, segmentos):
     - n_errores: -1 si no se pudo verificar (LanguageTool no disponible),
       0 si se verificó y no hay errores, o el número de errores detectados.
-    - texto_corregido: texto con la primera sugerencia de LanguageTool
-      aplicada a cada error (o el texto original si no hay sugerencia
-      para ese error).
+    - segmentos: lista de dicts, cada uno
+      {"tipo": "texto", "valor": str} o
+      {"tipo": "error", "valor": str, "opciones": list[str]} (máx. 5 sugerencias).
     """
     s = str(texto or "")
     if not s:
-        return "", 0, ""
+        return 0, []
     if _LT_TOOL_ES is None:
-        return html.escape(s), -1, s
+        return -1, [{"tipo": "texto", "valor": s}]
 
     try:
         matches = _LT_TOOL_ES.check(s)
     except Exception:
-        return html.escape(s), -1, s
+        return -1, [{"tipo": "texto", "valor": s}]
 
     if not matches:
-        return html.escape(s), 0, s
+        return 0, [{"tipo": "texto", "valor": s}]
 
-    partes = []
-    corregido = []
+    segmentos = []
     ultimo = 0
     n_errores = 0
     for m in matches:
@@ -325,17 +326,142 @@ def resaltar_ortografia_html(texto: str) -> tuple[str, int, str]:
         end = m.offset + m.error_length
         if start < ultimo:
             continue
-        previo = s[ultimo:start]
-        partes.append(html.escape(previo))
-        corregido.append(previo)
-
-        partes.append(f"<span class='spell-error'>{html.escape(s[start:end])}</span>")
-        corregido.append(m.replacements[0] if m.replacements else s[start:end])
-
+        if s[ultimo:start]:
+            segmentos.append({"tipo": "texto", "valor": s[ultimo:start]})
+        segmentos.append({
+            "tipo": "error",
+            "valor": s[start:end],
+            "opciones": list(m.replacements)[:5],
+        })
         ultimo = end
         n_errores += 1
 
-    partes.append(html.escape(s[ultimo:]))
-    corregido.append(s[ultimo:])
+    if s[ultimo:]:
+        segmentos.append({"tipo": "texto", "valor": s[ultimo:]})
 
-    return "".join(partes), n_errores, "".join(corregido)
+    return n_errores, segmentos
+
+
+def segmentos_a_html(segmentos: list[dict]) -> str:
+    """Convierte segmentos en HTML estático (subrayado, sin interacción)."""
+    partes = []
+    for seg in segmentos:
+        if seg["tipo"] == "error":
+            partes.append(f"<span class='spell-error'>{html.escape(seg['valor'])}</span>")
+        else:
+            partes.append(html.escape(seg["valor"]))
+    return "".join(partes)
+
+
+def render_revision_ortografica_interactiva(segmentos: list[dict], key: str) -> None:
+    """
+    Muestra el texto con errores subrayados y clickeables: al hacer clic en
+    una palabra marcada se despliega un menú con las sugerencias de
+    LanguageTool; al elegir una, se sustituye en el texto. Incluye un botón
+    para copiar el texto completo (con las sustituciones ya aplicadas) al
+    portapapeles.
+    """
+    n_chars = sum(len(s["valor"]) for s in segmentos)
+    altura = min(650, max(150, 100 + (n_chars // 90) * 26))
+
+    data = _json.dumps(segmentos, ensure_ascii=False).replace("</", "<\\/")
+
+    html_doc = f"""
+    <meta charset="utf-8">
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#111;">
+      <div id="texto-{key}" style="border:1px dashed #fecaca;border-radius:6px;padding:8px 10px;word-break:break-word;background:#fff;"></div>
+      <div style="margin-top:8px;">
+        <button id="copiar-{key}" style="border:1px solid #e5e7eb;border-radius:8px;padding:.4rem .8rem;background:#fff;cursor:pointer;font-size:14px;">📋 Copiar texto</button>
+        <span id="msg-{key}" style="margin-left:8px;color:#059669;font-size:13px;"></span>
+      </div>
+    </div>
+    <script>
+    (function() {{
+      const segmentos = {data};
+      const cont = document.getElementById("texto-{key}");
+
+      function cerrarMenus() {{
+        document.querySelectorAll(".rortografia-menu").forEach(el => el.remove());
+      }}
+
+      function render() {{
+        cont.innerHTML = "";
+        segmentos.forEach((seg, i) => {{
+          if (seg.tipo === "texto") {{
+            cont.appendChild(document.createTextNode(seg.valor));
+            return;
+          }}
+          const span = document.createElement("span");
+          span.textContent = seg.valor;
+          const tieneOpciones = seg.opciones && seg.opciones.length > 0;
+          span.style.textDecorationLine = "underline";
+          span.style.textDecorationStyle = "wavy";
+          span.style.textDecorationColor = "#ef4444";
+          span.style.textDecorationThickness = "1.5px";
+          span.style.cursor = tieneOpciones ? "pointer" : "default";
+          if (tieneOpciones) {{
+            span.title = "Clic para ver sugerencias";
+            span.addEventListener("click", (ev) => {{
+              ev.stopPropagation();
+              cerrarMenus();
+              const menu = document.createElement("div");
+              menu.className = "rortografia-menu";
+              menu.style.cssText = "position:absolute;background:#111;color:#fff;border-radius:6px;padding:4px 0;font-size:13px;z-index:1000;box-shadow:0 6px 16px rgba(0,0,0,.25);min-width:120px;";
+              seg.opciones.forEach(op => {{
+                const item = document.createElement("div");
+                item.textContent = op;
+                item.style.cssText = "padding:6px 12px;cursor:pointer;white-space:nowrap;";
+                item.onmouseenter = () => item.style.background = "#333";
+                item.onmouseleave = () => item.style.background = "transparent";
+                item.onclick = () => {{
+                  segmentos[i] = {{tipo: "texto", valor: op}};
+                  cerrarMenus();
+                  render();
+                }};
+                menu.appendChild(item);
+              }});
+              document.body.appendChild(menu);
+              const rect = span.getBoundingClientRect();
+              menu.style.left = (window.scrollX + rect.left) + "px";
+              menu.style.top = (window.scrollY + rect.bottom + 4) + "px";
+            }});
+          }}
+          cont.appendChild(span);
+        }});
+      }}
+      document.addEventListener("click", cerrarMenus);
+      render();
+
+      document.getElementById("copiar-{key}").addEventListener("click", () => {{
+        const texto = segmentos.map(s => s.valor).join("");
+        const avisar = () => {{
+          const msg = document.getElementById("msg-{key}");
+          msg.textContent = "¡Copiado!";
+          setTimeout(() => msg.textContent = "", 2000);
+        }};
+        if (navigator.clipboard && navigator.clipboard.writeText) {{
+          navigator.clipboard.writeText(texto).then(avisar).catch(() => {{
+            copiarConFallback(texto);
+            avisar();
+          }});
+        }} else {{
+          copiarConFallback(texto);
+          avisar();
+        }}
+      }});
+
+      function copiarConFallback(texto) {{
+        const ta = document.createElement("textarea");
+        ta.value = texto;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {{ document.execCommand("copy"); }} catch (e) {{}}
+        document.body.removeChild(ta);
+      }}
+    }})();
+    </script>
+    """
+    components.html(html_doc, height=altura, scrolling=True)
