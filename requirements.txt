@@ -6,3 +6,6 @@ plotly==5.22.0
 
 # Excel (.xlsx)
 openpyxl==3.1.5
+
+# Revision ortografica/gramatical (requiere Java, ver packages.txt)
+language_tool_python==3.1.0

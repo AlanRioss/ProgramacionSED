@@ -291,27 +291,31 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
 # ============ Spell-check ============
 
 @st.cache_data(show_spinner=False)
-def resaltar_ortografia_html(texto: str) -> str:
+def resaltar_ortografia_html(texto: str) -> tuple[str, int]:
     """
-    Devuelve el texto en HTML, subrayando en rojo ondulado
+    Devuelve (html, n_errores). El texto en HTML subraya en rojo ondulado
     los posibles errores ortográficos/gramaticales.
+
+    n_errores es -1 si no se pudo verificar (LanguageTool no disponible),
+    0 si se verificó y no hay errores, o el número de errores detectados.
     """
     s = str(texto or "")
     if not s:
-        return ""
+        return "", 0
     if _LT_TOOL_ES is None:
-        return html.escape(s)
+        return html.escape(s), -1
 
     try:
         matches = _LT_TOOL_ES.check(s)
     except Exception:
-        return html.escape(s)
+        return html.escape(s), -1
 
     if not matches:
-        return html.escape(s)
+        return html.escape(s), 0
 
     partes = []
     ultimo = 0
+    n_errores = 0
     for m in matches:
         start = m.offset
         end = m.offset + m.errorLength
@@ -320,6 +324,7 @@ def resaltar_ortografia_html(texto: str) -> str:
         partes.append(html.escape(s[ultimo:start]))
         partes.append(f"<span class='spell-error'>{html.escape(s[start:end])}</span>")
         ultimo = end
+        n_errores += 1
 
     partes.append(html.escape(s[ultimo:]))
-    return "".join(partes)
+    return "".join(partes), n_errores
