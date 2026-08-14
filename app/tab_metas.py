@@ -29,6 +29,18 @@ from ui_components import (
 
 
 
+def _fila_cambio_html(tipo: str, id_val: str, extra: str, monto_str: str, positivo: bool, campos: str | None = None) -> str:
+    clase_amt = "chg-amt--pos" if positivo else "chg-amt--neg"
+    extra_html = f" <span class='chg-extra'>{_html_mod.escape(extra)}</span>" if extra else ""
+    campos_html = f"<div class='chg-fields'>Campos modificados: {_html_mod.escape(campos)}</div>" if campos else ""
+    return (
+        f"<div class='chg-row chg-row--{tipo}'>"
+        f"<div><div class='chg-main'><b>{_html_mod.escape(id_val)}</b>{extra_html}</div>{campos_html}</div>"
+        f"<div class='chg-amt {clase_amt}'>{_html_mod.escape(monto_str)}</div>"
+        f"</div>"
+    )
+
+
 def _render_resumen_cambios(tabla_cc: pd.DataFrame, meta_key: str) -> None:
     """Resumen programático de cambios entre cortes (sin API externa)."""
     CAMPOS_LEGIBLES = {
@@ -48,7 +60,7 @@ def _render_resumen_cambios(tabla_cc: pd.DataFrame, meta_key: str) -> None:
     n_eliminadas  = int((tabla_cc["Estado"] == "✖ Eliminada").sum())
     n_modificadas = int((tabla_cc["Estado"] == "✎ Modificada").sum())
     n_sin_cambios = int((tabla_cc["Estado"] == "✔ Sin cambios").sum())
-    hay_cambios   = (n_nuevas + n_eliminadas + n_modificadas) > 0
+    n_total       = n_nuevas + n_eliminadas + n_modificadas
     delta_total   = float(tabla_cc["Δ total $"].sum()) if "Δ total $" in tabla_cc.columns else 0.0
 
     other_key = "Clave de Meta" if meta_key == "ID Meta" else "ID Meta"
@@ -56,68 +68,80 @@ def _render_resumen_cambios(tabla_cc: pd.DataFrame, meta_key: str) -> None:
     def _id_line(row):
         id_val    = str(row.get(meta_key, "?")).strip()
         other_val = str(row.get(other_key, "")).strip()
-        extra = f" · {other_key}: `{other_val}`" if other_val not in ("", "nan") else ""
+        extra = f"· {other_key}: {other_val}" if other_val not in ("", "nan") else ""
         return id_val, extra
 
-    # --- 4 métricas ---
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🆕 Nuevas",      n_nuevas)
-    c2.metric("🗑️ Eliminadas",  n_eliminadas)
-    c3.metric("🔄 Modificadas", n_modificadas)
-    c4.metric("✔️ Sin cambios", n_sin_cambios)
-
-    if not hay_cambios:
-        st.success("No hubo cambios entre cortes.")
-        return
-
-    # --- Balance neto ---
+    # --- Balance neto (siempre visible) ---
     signo = "+" if delta_total >= 0 else ""
     color = "#2e7d32" if delta_total >= 0 else "#c62828"
+    sin_cambios_txt = f" &nbsp;·&nbsp; <span style='color:#6b7280'>{n_sin_cambios} sin cambios</span>" if n_sin_cambios else ""
     st.markdown(
         f"**Balance neto de monto:** "
-        f"<span style='color:{color}; font-weight:bold'>{signo}${delta_total:,.0f} MXN</span>",
+        f"<span style='color:{color}; font-weight:bold'>{signo}${delta_total:,.0f} MXN</span>"
+        f"{sin_cambios_txt}",
         unsafe_allow_html=True,
     )
 
+    if n_total == 0:
+        st.success("No hubo cambios entre cortes.")
+        return
+
     st.markdown("---")
 
-    # --- Nuevas ---
-    if n_nuevas > 0:
-        nuevas = tabla_cc[tabla_cc["Estado"] == "✚ Nueva"]
-        with st.expander(f"🆕 Metas nuevas — {n_nuevas}", expanded=True):
-            for _, row in nuevas.iterrows():
-                id_val, extra = _id_line(row)
-                delta = float(row.get("Δ total $", 0) or 0)
-                st.markdown(f"- **{id_val}**{extra} → Monto: `${delta:,.0f} MXN`")
+    # --- Chips de filtro ---
+    opciones = [f"Todas · {n_total}"]
+    if n_nuevas:
+        opciones.append(f"🆕 Nuevas · {n_nuevas}")
+    if n_eliminadas:
+        opciones.append(f"🗑️ Eliminadas · {n_eliminadas}")
+    if n_modificadas:
+        opciones.append(f"🔄 Modificadas · {n_modificadas}")
 
-    # --- Eliminadas ---
-    if n_eliminadas > 0:
-        eliminadas = tabla_cc[tabla_cc["Estado"] == "✖ Eliminada"]
-        with st.expander(f"🗑️ Metas eliminadas — {n_eliminadas}", expanded=True):
-            for _, row in eliminadas.iterrows():
-                id_val, extra = _id_line(row)
-                delta = float(row.get("Δ total $", 0) or 0)
-                st.markdown(f"- **{id_val}**{extra} · Monto retirado: `${abs(delta):,.0f} MXN`")
+    if len(opciones) > 1:
+        filtro = st.pills(
+            "Filtrar por tipo de cambio", opciones, default=opciones[0], label_visibility="collapsed",
+        ) or opciones[0]
+    else:
+        filtro = opciones[0]
 
-    # --- Modificadas (ordenadas por |Δ| desc) ---
-    if n_modificadas > 0:
+    ver_nuevas      = filtro.startswith("Todas") or filtro.startswith("🆕")
+    ver_eliminadas  = filtro.startswith("Todas") or filtro.startswith("🗑️")
+    ver_modificadas = filtro.startswith("Todas") or filtro.startswith("🔄")
+
+    filas = []
+
+    if ver_nuevas and n_nuevas:
+        for _, row in tabla_cc[tabla_cc["Estado"] == "✚ Nueva"].iterrows():
+            id_val, extra = _id_line(row)
+            delta = float(row.get("Δ total $", 0) or 0)
+            filas.append(_fila_cambio_html("nueva", id_val, extra, f"+${delta:,.0f} MXN", True))
+
+    if ver_eliminadas and n_eliminadas:
+        for _, row in tabla_cc[tabla_cc["Estado"] == "✖ Eliminada"].iterrows():
+            id_val, extra = _id_line(row)
+            delta = float(row.get("Δ total $", 0) or 0)
+            filas.append(_fila_cambio_html("eliminada", id_val, extra, f"−${abs(delta):,.0f} MXN", False))
+
+    if ver_modificadas and n_modificadas:
         modificadas = (
             tabla_cc[tabla_cc["Estado"] == "✎ Modificada"]
             .assign(_abs=tabla_cc["Δ total $"].abs())
             .sort_values("_abs", ascending=False)
         )
-        with st.expander(f"🔄 Metas modificadas — {n_modificadas}", expanded=True):
-            for _, row in modificadas.iterrows():
-                id_val, extra = _id_line(row)
-                delta = float(row.get("Δ total $", 0) or 0)
-                campos = [desc for col, desc in CAMPOS_LEGIBLES.items() if row.get(col) == "●"]
-                signo_d   = "+" if delta >= 0 else ""
-                delta_str = f" · Δ `{signo_d}${delta:,.0f} MXN`" if delta != 0 else " · Sin cambio de monto"
-                campos_str = ", ".join(campos) if campos else "—"
-                st.markdown(
-                    f"- **{id_val}**{extra}{delta_str}  \n"
-                    f"  Campos modificados: {campos_str}"
-                )
+        for _, row in modificadas.iterrows():
+            id_val, extra = _id_line(row)
+            delta = float(row.get("Δ total $", 0) or 0)
+            campos = [desc for col, desc in CAMPOS_LEGIBLES.items() if row.get(col) == "●"]
+            monto_str = f"{'+' if delta >= 0 else '−'}${abs(delta):,.0f} MXN" if delta != 0 else "Sin cambio de monto"
+            filas.append(_fila_cambio_html(
+                "modificada", id_val, extra, monto_str, delta >= 0,
+                campos=", ".join(campos) if campos else "—",
+            ))
+
+    if filas:
+        st.markdown("".join(filas), unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='chg-empty'>Sin resultados para este filtro.</div>", unsafe_allow_html=True)
 
 
 @st.fragment
