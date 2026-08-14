@@ -338,3 +338,19 @@ def _diff_html(a: str, b: str) -> tuple[str, str]:
         elif tag == "insert":
             res_b += f"<span style='background-color:#dcfce7'>{b[j1:j2]}</span>"
     return res_a, res_b
+
+
+def diff_ahora_ranges(a: str, b: str) -> list[tuple[int, int]]:
+    """Rangos [start,end) de `b` (texto crudo, sin escapar) que son nuevos o
+    cambiaron respecto a `a`, según difflib. Usado para resaltar el texto
+    "Ahora" combinado con la revisión ortográfica."""
+    a = str(a or "")
+    b = str(b or "")
+    if a == b:
+        return []
+    matcher = difflib.SequenceMatcher(None, a, b)
+    rangos = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("insert", "replace"):
+            rangos.append((j1, j2))
+    return rangos
