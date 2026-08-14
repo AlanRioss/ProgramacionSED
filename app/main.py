@@ -23,7 +23,8 @@ from loaders import (
 )
 from ui_components import (
     inject_css, titulo_con_tooltip,
-    analizar_ortografia, segmentos_a_html, render_revision_ortografica_interactiva,
+    analizar_ortografia, analizar_ortografia_ahora,
+    segmentos_a_html, render_revision_ortografica_interactiva,
 )
 from tab_metas import render_tab_metas
 
@@ -251,10 +252,10 @@ with tabs[0]:
             val_a = fila_antes.get(campo, "") if fila_antes is not None else ""
             val_h = fila_ahora.get(campo, "")
             estado = estados[campo]
-            n_errores_orto, segmentos_orto = analizar_ortografia(val_h)
-            ahora_spell = segmentos_a_html(segmentos_orto)
 
             if estado == "nuevo":
+                _, segmentos_orto = analizar_ortografia(val_h)
+                ahora_spell = segmentos_a_html(segmentos_orto)
                 titulo_con_tooltip(campo, seccion="datos_generales")
                 st.success("🆕 Nuevo")
                 col1, col2 = st.columns(2)
@@ -269,9 +270,10 @@ with tabs[0]:
                     )
 
             elif estado == "modificado":
+                _, segmentos_orto = analizar_ortografia_ahora(val_a, val_h)
                 titulo_con_tooltip(campo, seccion="datos_generales")
                 st.info("🔄 Modificado")
-                a_html, h_html = _diff_html(val_a, val_h)
+                a_html, _ = _diff_html(val_a, val_h)
                 col1, col2 = st.columns(2)
                 with col1:
                     st.caption("Antes")
@@ -281,20 +283,11 @@ with tabs[0]:
                     )
                 with col2:
                     st.caption("Ahora")
-                    st.markdown(
-                        f"<div style='{_STY_AHORA}'>{h_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-                with st.expander("📝 Revisión ortográfica del texto actual", expanded=False):
-                    if n_errores_orto == 0:
-                        st.success("✔ Sin errores ortográficos o gramaticales detectados.")
-                    elif n_errores_orto < 0:
-                        st.caption("Revisión ortográfica no disponible.")
-                    else:
-                        st.caption("Clic en una palabra marcada para ver sugerencias y sustituirla.")
-                        render_revision_ortografica_interactiva(segmentos_orto, key=f"orto_{campo}")
+                    render_revision_ortografica_interactiva(segmentos_orto, key=f"orto_{campo}")
 
             else:  # sin_cambios
+                _, segmentos_orto = analizar_ortografia(val_h)
+                ahora_spell = segmentos_a_html(segmentos_orto)
                 with st.expander(f"✔ {campo} — Sin cambios", expanded=False):
                     col1, col2 = st.columns(2)
                     with col1:

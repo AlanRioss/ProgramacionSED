@@ -10,7 +10,7 @@ import html
 import json as _json
 
 from manual_extractos import MANUAL
-from helpers import _fmt_id_meta, inferir_tipo_desde_clave_q, _ACCION_KEYS
+from helpers import _fmt_id_meta, inferir_tipo_desde_clave_q, _ACCION_KEYS, diff_ahora_ranges
 
 # --- Import condicional de LanguageTool ---
 try:
@@ -292,31 +292,30 @@ def render_tooltip_cronograma_qaware(manual_crono: dict, clave_q: str, columnas_
 
 # ============ Spell-check ============
 
-@st.cache_data(show_spinner=False)
-def analizar_ortografia(texto: str) -> tuple[int, list[dict]]:
+def _segmentos_ortografia_con_offsets(s: str) -> tuple[int, list[dict]]:
     """
-    Revisa el texto con LanguageTool y lo parte en segmentos.
+    Revisa `s` con LanguageTool y lo parte en segmentos con sus offsets.
 
     Devuelve (n_errores, segmentos):
     - n_errores: -1 si no se pudo verificar (LanguageTool no disponible),
       0 si se verificó y no hay errores, o el número de errores detectados.
     - segmentos: lista de dicts, cada uno
-      {"tipo": "texto", "valor": str} o
-      {"tipo": "error", "valor": str, "opciones": list[str]} (máx. 5 sugerencias).
+      {"tipo": "texto", "valor": str, "start": int, "end": int} o
+      {"tipo": "error", "valor": str, "opciones": list[str], "start": int, "end": int}
+      (máx. 5 sugerencias por error).
     """
-    s = str(texto or "")
     if not s:
         return 0, []
     if _LT_TOOL_ES is None:
-        return -1, [{"tipo": "texto", "valor": s}]
+        return -1, [{"tipo": "texto", "valor": s, "start": 0, "end": len(s)}]
 
     try:
         matches = _LT_TOOL_ES.check(s)
     except Exception:
-        return -1, [{"tipo": "texto", "valor": s}]
+        return -1, [{"tipo": "texto", "valor": s, "start": 0, "end": len(s)}]
 
     if not matches:
-        return 0, [{"tipo": "texto", "valor": s}]
+        return 0, [{"tipo": "texto", "valor": s, "start": 0, "end": len(s)}]
 
     segmentos = []
     ultimo = 0
@@ -327,17 +326,80 @@ def analizar_ortografia(texto: str) -> tuple[int, list[dict]]:
         if start < ultimo:
             continue
         if s[ultimo:start]:
-            segmentos.append({"tipo": "texto", "valor": s[ultimo:start]})
+            segmentos.append({"tipo": "texto", "valor": s[ultimo:start], "start": ultimo, "end": start})
         segmentos.append({
             "tipo": "error",
             "valor": s[start:end],
             "opciones": list(m.replacements)[:5],
+            "start": start,
+            "end": end,
         })
         ultimo = end
         n_errores += 1
 
     if s[ultimo:]:
-        segmentos.append({"tipo": "texto", "valor": s[ultimo:]})
+        segmentos.append({"tipo": "texto", "valor": s[ultimo:], "start": ultimo, "end": len(s)})
+
+    return n_errores, segmentos
+
+
+@st.cache_data(show_spinner=False)
+def analizar_ortografia(texto: str) -> tuple[int, list[dict]]:
+    """Como `_segmentos_ortografia_con_offsets`, pero sin los offsets (uso general)."""
+    n_errores, segmentos = _segmentos_ortografia_con_offsets(str(texto or ""))
+    limpio = [{k: v for k, v in seg.items() if k not in ("start", "end")} for seg in segmentos]
+    return n_errores, limpio
+
+
+def _overlaps(start: int, end: int, rangos: list[tuple[int, int]]) -> bool:
+    return any(start < r1 and end > r0 for r0, r1 in rangos)
+
+
+def _split_por_diff(start: int, end: int, rangos: list[tuple[int, int]]):
+    """Divide [start,end) en sub-rangos (lo, hi, es_diff) según los cortes de `rangos`."""
+    puntos = {start, end}
+    for r0, r1 in rangos:
+        if start < r1 and end > r0:
+            puntos.add(max(start, r0))
+            puntos.add(min(end, r1))
+    puntos = sorted(puntos)
+    for lo, hi in zip(puntos, puntos[1:]):
+        if lo == hi:
+            continue
+        yield lo, hi, any(lo >= r0 and hi <= r1 for r0, r1 in rangos)
+
+
+@st.cache_data(show_spinner=False)
+def analizar_ortografia_ahora(texto_antes: str, texto_ahora: str) -> tuple[int, list[dict]]:
+    """
+    Revisa ortografía de `texto_ahora` y marca qué porciones son nuevas o
+    cambiaron respecto a `texto_antes`, para pintar diff + ortografía juntos
+    sobre el mismo texto (columna "Ahora").
+
+    Devuelve (n_errores, segmentos) igual que `analizar_ortografia`, pero cada
+    segmento incluye además "diff": bool. Los segmentos de tipo "error" se
+    mantienen íntegros (nunca se parte una palabra marcada por LanguageTool),
+    para que el clic de reemplazo siga funcionando correctamente.
+    """
+    s = str(texto_ahora or "")
+    if not s:
+        return 0, []
+
+    n_errores, base = _segmentos_ortografia_con_offsets(s)
+    rangos_diff = diff_ahora_ranges(texto_antes, s)
+
+    segmentos = []
+    for seg in base:
+        if seg["tipo"] == "error":
+            segmentos.append({
+                "tipo": "error",
+                "valor": seg["valor"],
+                "opciones": seg["opciones"],
+                "diff": _overlaps(seg["start"], seg["end"], rangos_diff),
+            })
+        else:
+            for lo, hi, es_diff in _split_por_diff(seg["start"], seg["end"], rangos_diff):
+                segmentos.append({"tipo": "texto", "valor": s[lo:hi], "diff": es_diff})
 
     return n_errores, segmentos
 
@@ -355,11 +417,12 @@ def segmentos_a_html(segmentos: list[dict]) -> str:
 
 def render_revision_ortografica_interactiva(segmentos: list[dict], key: str) -> None:
     """
-    Muestra el texto con errores subrayados y clickeables: al hacer clic en
-    una palabra marcada se despliega un menú con las sugerencias de
-    LanguageTool; al elegir una, se sustituye en el texto. Incluye un botón
-    para copiar el texto completo (con las sustituciones ya aplicadas) al
-    portapapeles.
+    Muestra el texto "Ahora" (con el diff respecto a "Antes" ya resaltado en
+    verde, si los segmentos lo incluyen) y los errores ortográficos
+    subrayados y clickeables: al hacer clic en una palabra marcada se
+    despliega un menú con las sugerencias de LanguageTool; al elegir una, se
+    sustituye en el texto. Incluye un botón para copiar el texto completo
+    (con las sustituciones ya aplicadas) al portapapeles.
     """
     n_chars = sum(len(s["valor"]) for s in segmentos)
     altura = min(650, max(150, 100 + (n_chars // 90) * 26))
@@ -369,10 +432,10 @@ def render_revision_ortografica_interactiva(segmentos: list[dict], key: str) -> 
     html_doc = f"""
     <meta charset="utf-8">
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#111;">
-      <div id="texto-{key}" style="border:1px dashed #fecaca;border-radius:6px;padding:8px 10px;word-break:break-word;background:#fff;"></div>
-      <div style="margin-top:8px;">
-        <button id="copiar-{key}" style="border:1px solid #e5e7eb;border-radius:8px;padding:.4rem .8rem;background:#fff;cursor:pointer;font-size:14px;">📋 Copiar texto</button>
-        <span id="msg-{key}" style="margin-left:8px;color:#059669;font-size:13px;"></span>
+      <div id="texto-{key}" style="border:1px solid #e5e7eb;border-radius:6px;padding:8px;word-break:break-word;background:#fff;"></div>
+      <div style="margin-top:6px;">
+        <button id="copiar-{key}" style="border:1px solid #e5e7eb;border-radius:8px;padding:.3rem .7rem;background:#fff;cursor:pointer;font-size:12px;color:#555;">📋 Copiar texto</button>
+        <span id="msg-{key}" style="margin-left:8px;color:#059669;font-size:12px;"></span>
       </div>
     </div>
     <script>
@@ -388,7 +451,14 @@ def render_revision_ortografica_interactiva(segmentos: list[dict], key: str) -> 
         cont.innerHTML = "";
         segmentos.forEach((seg, i) => {{
           if (seg.tipo === "texto") {{
-            cont.appendChild(document.createTextNode(seg.valor));
+            if (seg.diff) {{
+              const mark = document.createElement("span");
+              mark.textContent = seg.valor;
+              mark.style.backgroundColor = "#dcfce7";
+              cont.appendChild(mark);
+            }} else {{
+              cont.appendChild(document.createTextNode(seg.valor));
+            }}
             return;
           }}
           const span = document.createElement("span");
@@ -399,6 +469,9 @@ def render_revision_ortografica_interactiva(segmentos: list[dict], key: str) -> 
           span.style.textDecorationColor = "#ef4444";
           span.style.textDecorationThickness = "1.5px";
           span.style.cursor = tieneOpciones ? "pointer" : "default";
+          if (seg.diff) {{
+            span.style.backgroundColor = "#dcfce7";
+          }}
           if (tieneOpciones) {{
             span.title = "Clic para ver sugerencias";
             span.addEventListener("click", (ev) => {{
