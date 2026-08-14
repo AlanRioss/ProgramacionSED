@@ -235,28 +235,24 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
             def _comparar_texto(label: str, a: str, h: str):
                 if meta_es_nueva:
-                    col1.markdown(f"**{label} (Antes)**")
-                    col1.caption("— Sin datos en corte anterior —")
-                    col2.markdown(f"**{label} (Ahora)**")
-                    col2.write(h)
-                    st.success(f"🆕 {label}: nuevo")
+                    st.markdown(f"**{label}** <span class='badge'>🆕 Nuevo</span>", unsafe_allow_html=True)
+                    col1.caption("Antes"); col1.caption("— Sin datos en corte anterior —")
+                    col2.caption("Ahora"); col2.write(h)
                 elif meta_fue_eliminada:
-                    col1.markdown(f"**{label} (Antes)**")
-                    col1.write(a)
-                    col2.markdown(f"**{label} (Ahora)**")
-                    col2.caption("— Meta eliminada en corte actual —")
-                    st.error(f"🗑️ {label}: eliminada")
+                    st.markdown(f"**{label}** <span class='badge badge--bad'>🗑️ Eliminada</span>", unsafe_allow_html=True)
+                    col1.caption("Antes"); col1.write(a)
+                    col2.caption("Ahora"); col2.caption("— Meta eliminada en corte actual —")
                 elif str(a) == str(h):
-                    col1.markdown(f"**{label} (Antes)**"); col1.write(a)
-                    col2.markdown(f"**{label} (Ahora)**"); col2.write(h)
-                    st.success(f"✔ {label}: sin cambios")
+                    st.markdown(f"**{label}** <span class='badge badge--ok'>✔ Sin cambios</span>", unsafe_allow_html=True)
+                    col1.caption("Antes"); col1.write(a)
+                    col2.caption("Ahora"); col2.write(h)
                 else:
+                    st.markdown(f"**{label}** <span class='badge badge--warn'>🔄 Modificado</span>", unsafe_allow_html=True)
                     antes_html, ahora_html = _diff_html(a, h)
-                    col1.markdown(f"**{label} (Antes)**")
+                    col1.caption("Antes")
                     col1.markdown(f"<div style='border:1px solid #e5e7eb;padding:8px'>{antes_html}</div>", unsafe_allow_html=True)
-                    col2.markdown(f"**{label} (Ahora)**")
+                    col2.caption("Ahora")
                     col2.markdown(f"<div style='border:1px solid #e5e7eb;padding:8px'>{ahora_html}</div>", unsafe_allow_html=True)
-                    st.info(f"🔄 {label}: modificado")
 
             desc_a = df_antes_meta["Descripción de la Meta"].iloc[0] if "Descripción de la Meta" in df_antes_meta.columns and not df_antes_meta.empty else ""
             desc_h = df_ahora_meta["Descripción de la Meta"].iloc[0] if "Descripción de la Meta" in df_ahora_meta.columns and not df_ahora_meta.empty else ""
@@ -503,7 +499,8 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         st.write("**Selecciona una meta para visualizar su calendarizado (Por default se muestra del proyecto completo)**")
 
-        with st.expander("🎚️ Filtro de partidas", expanded=False):
+        with st.expander("⚙️ Configuración de Partidas", expanded=False):
+            st.markdown("**Partidas a mostrar**")
             col1, col2 = st.columns([3, 1])
             todas_on = col2.checkbox(
                 "Todas",
@@ -521,6 +518,33 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     key=f"ms_partidas_{_fmt_id_meta(id_meta_sel)}",
                     placeholder="Escribe o selecciona una o más partidas...",
                 )
+
+            st.markdown("**Orden de la tabla \"Partidas por Actividad\"**")
+            col_ord1, col_ord2, col_mode = st.columns([2, 1, 1])
+            opciones_sort = [
+                "Diferencia",
+                "Monto Anual (Ahora)",
+                "Monto Anual (Antes)",
+                "Partida",
+                "Actividad (Cronograma)",
+            ]
+            sort_col = col_ord1.selectbox(
+                "Ordenar por",
+                opciones_sort,
+                index=1,
+                key=f"sortcol_{_fmt_id_meta(id_meta_sel)}",
+            )
+            asc = col_ord2.toggle(
+                "Ascendente",
+                value=False,
+                key=f"sortasc_{_fmt_id_meta(id_meta_sel)}",
+            )
+            modo_interactivo = col_mode.toggle(
+                "Tabla interactiva",
+                value=False,
+                help="Permite ordenar clicando en el encabezado (sin 'chip' 🔒).",
+                key=f"modo_inter_{_fmt_id_meta(id_meta_sel)}",
+            )
 
         if not filtro_partidas:
             filtro_partidas = partidas_disponibles
@@ -566,7 +590,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
         labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
 
         titulo_scope = (
-            f"Meta ({'ID ' if META_COL == 'ID Meta' else ''}{META_COL} {id_meta_sel})"
+            f"Meta ({META_COL}) {id_meta_sel}"
             if id_meta_sel else "Proyecto completo"
         )
 
@@ -705,33 +729,6 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                 return ""
             return "background-color:#fff3cd" if abs(v) != 0 else ""
 
-        with st.expander("⚙️ Opciones de ordenamiento", expanded=False):
-            col_ord1, col_ord2, col_mode = st.columns([2, 1, 1])
-            opciones_sort = [
-                "Diferencia",
-                "Monto Anual (Ahora)",
-                "Monto Anual (Antes)",
-                "Partida",
-                "Actividad (Cronograma)",
-            ]
-            sort_col = col_ord1.selectbox(
-                "Ordenar por",
-                opciones_sort,
-                index=1,
-                key=f"sortcol_{_fmt_id_meta(id_meta_sel)}",
-            )
-            asc = col_ord2.toggle(
-                "Ascendente",
-                value=False,
-                key=f"sortasc_{_fmt_id_meta(id_meta_sel)}",
-            )
-            modo_interactivo = col_mode.toggle(
-                "Tabla interactiva",
-                value=False,
-                help="Permite ordenar clicando en el encabezado (sin 'chip' 🔒).",
-                key=f"modo_inter_{_fmt_id_meta(id_meta_sel)}",
-            )
-
         _tabla_ordenada = _tabla_unica.sort_values(sort_col, ascending=asc, kind="stable").copy()
 
         if modo_interactivo:
@@ -853,7 +850,8 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     errors="coerce",
                 ).fillna(0.0)
 
-                with st.expander("💬 Opciones de etiquetas de monto", expanded=False):
+                with st.expander("⚙️ Configuración del Cronograma", expanded=False):
+                    st.markdown("**Etiquetas de monto en las barras**")
                     use_compact_amount = st.toggle(
                         "Usar formato compacto (K/M/B) en las barras",
                         value=True,
@@ -876,18 +874,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                         disabled=not hide_on_short_bars,
                     )
 
-                def _pick_label(row):
-                    if row["Monto_val"] == 0:
-                        return ""
-                    if hide_on_short_bars and row["DuracionDias"] < min_days_short:
-                        return ""
-                    if show_only_now and row.get("Versión") != "Ahora":
-                        return ""
-                    return row["Monto_compact"] if use_compact_amount else row["Monto_full"]
-
-                df_crono["MontoLabel"] = df_crono.apply(_pick_label, axis=1)
-
-                with st.expander("🔎 Filtros del Cronograma", expanded=True):
+                    st.markdown("**Filtros del Cronograma**")
                     show_only_version_now = st.toggle(
                         "Mostrar solo versión 'Ahora'",
                         value=False,
@@ -906,10 +893,16 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                         key=f"orden_y_{_fmt_id_meta(id_meta_sel)}",
                     )
 
-                df_crono["Monto_val"] = pd.to_numeric(
-                    df_crono.get("Monto Actividad / Hito", pd.Series([None] * len(df_crono))),
-                    errors="coerce",
-                ).fillna(0.0)
+                def _pick_label(row):
+                    if row["Monto_val"] == 0:
+                        return ""
+                    if hide_on_short_bars and row["DuracionDias"] < min_days_short:
+                        return ""
+                    if show_only_now and row.get("Versión") != "Ahora":
+                        return ""
+                    return row["Monto_compact"] if use_compact_amount else row["Monto_full"]
+
+                df_crono["MontoLabel"] = df_crono.apply(_pick_label, axis=1)
 
                 df_crono_plot = df_crono.copy()
                 for c in ["Fecha de Inicio", "Fecha de Termino"]:
@@ -1081,9 +1074,18 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
             cantidad_ahora = float(df_cump_h["Cantidad"].iloc[0]) if (not df_cump_h.empty and "Cantidad" in df_cump_h.columns and pd.notna(df_cump_h["Cantidad"].iloc[0])) else None
             cantidad_antes = float(df_cump_a["Cantidad"].iloc[0]) if (not df_cump_a.empty and "Cantidad" in df_cump_a.columns and pd.notna(df_cump_a["Cantidad"].iloc[0])) else None
 
+            dif_cantidad_cump = (
+                cantidad_ahora - cantidad_antes
+                if cantidad_ahora is not None and cantidad_antes is not None else None
+            )
+
             col1, col2 = st.columns(2)
-            col1.metric("Cantidad Programada (Ahora)", f"{cantidad_ahora:.2f}" if cantidad_ahora is not None else "—")
-            col2.metric("Cantidad Programada (Antes)", f"{cantidad_antes:.2f}" if cantidad_antes is not None else "—")
+            col1.metric("Cantidad Programada (Antes)", f"{cantidad_antes:.2f}" if cantidad_antes is not None else "—")
+            col2.metric(
+                "Cantidad Programada (Ahora)",
+                f"{cantidad_ahora:.2f}" if cantidad_ahora is not None else "—",
+                delta=f"{dif_cantidad_cump:+.2f}" if dif_cantidad_cump is not None else None,
+            )
 
             meses = [
                 "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
