@@ -144,6 +144,21 @@ hr{ border:none; height:1px; background:linear-gradient(90deg,#e5e7eb,transparen
     padding:6px 10px; margin-bottom:6px;
 }
 .crono-title{ font-weight:700; margin:.25rem 0 .25rem 0; font-size:0.82rem !important; }
+
+/* Resumen de cambios - Metas: filas planas con acento de color, sin cajas */
+.chg-row{ display:flex; align-items:baseline; justify-content:space-between; gap:1rem;
+  padding:.5rem 0 .5rem .7rem; border-left:3px solid #e5e7eb; border-bottom:1px solid #f1f0ee; }
+.chg-row:last-child{ border-bottom:none; }
+.chg-row--nueva{ border-left-color:#4f46e5; }
+.chg-row--eliminada{ border-left-color:var(--bad); }
+.chg-row--modificada{ border-left-color:var(--warn); }
+.chg-main{ font-size:.92rem; }
+.chg-extra{ color:var(--muted); font-size:.85rem; }
+.chg-fields{ color:#9096a1; font-size:.8rem; margin-top:.15rem; }
+.chg-amt{ font-size:.92rem; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.chg-amt--pos{ color:#065f46; }
+.chg-amt--neg{ color:#991b1b; }
+.chg-empty{ color:var(--muted); font-size:.88rem; padding:.4rem 0; }
 </style>
 """
 
