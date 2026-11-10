@@ -116,7 +116,7 @@ def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     if meta_key not in df.columns:
         return pd.DataFrame()
 
-    df["llave_meta"] = df[meta_key].astype(str)
+    df["llave_meta"] = df[meta_key].apply(lambda v: _norm_meta_val(meta_key, v))
 
     num_cols = [
         "Cantidad Estatal", "Monto Estatal",
@@ -155,7 +155,111 @@ def _agregar_por_meta_simple(df: pd.DataFrame, meta_key: str) -> pd.DataFrame:
     return base
 
 
-def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str) -> pd.DataFrame:
+# ============ Cambios en hojas secundarias (cronograma / partidas / cumplimiento) ============
+
+MESES_CUMPLIMIENTO = [
+    "Cumplimiento Enero", "Cumplimiento Febrero", "Cumplimiento Marzo", "Cumplimiento Abril",
+    "Cumplimiento Mayo", "Cumplimiento Junio", "Cumplimiento Julio", "Cumplimiento Agosto",
+    "Cumplimiento Septiembre", "Cumplimiento Octubre", "Cumplimiento Noviembre", "Cumplimiento Diciembre",
+]
+
+_CRONO_COLS = [
+    "Clave de Actividad /Hito", "Tipo", "Fase Actividad / Hito", "Descripción",
+    "Fecha de Inicio", "Fecha de Termino", "Monto Actividad / Hito",
+]
+
+
+def _con_llave(df: pd.DataFrame | None, meta_key: str) -> pd.DataFrame:
+    """Copia del df con columna 'llave_meta' normalizada; vacío si no aplica."""
+    if df is None or df.empty or meta_key not in df.columns:
+        return pd.DataFrame(columns=["llave_meta"])
+    out = df.copy()
+    out["llave_meta"] = out[meta_key].apply(lambda v: _norm_meta_val(meta_key, v))
+    return out[out["llave_meta"] != ""]
+
+
+def _firma_cronograma(df: pd.DataFrame) -> dict:
+    """llave_meta -> conjunto de renglones normalizados del cronograma (comparación absoluta)."""
+    if df.empty:
+        return {}
+    cols = [c for c in _CRONO_COLS if c in df.columns]
+
+    def _norm_val(c, v):
+        if pd.isna(v):
+            return ""
+        if c in ("Fecha de Inicio", "Fecha de Termino"):
+            ts = pd.to_datetime(v, errors="coerce", dayfirst=True)
+            return "" if pd.isna(ts) else ts.strftime("%Y-%m-%d")
+        if c in ("Clave de Actividad /Hito", "Monto Actividad / Hito"):
+            n = pd.to_numeric(v, errors="coerce")
+            return _norm_simple(v) if pd.isna(n) else f"{float(n):.2f}"
+        return _norm_simple(v)
+
+    firmas = {}
+    for llave, g in df.groupby("llave_meta"):
+        firmas[llave] = frozenset(
+            tuple(_norm_val(c, r[c]) for c in cols) for _, r in g.iterrows()
+        )
+    return firmas
+
+
+def _distribucion_cambio(a: np.ndarray, h: np.ndarray) -> bool:
+    """True si cambió la distribución mensual, ignorando cambios de importe/cantidad.
+
+    Cuenta como cambio de distribución:
+      - cambian los meses que tienen valor (se mueve a otro mes, se agrega/quita un mes), o
+      - el total es el mismo pero se redistribuyó entre meses.
+    Un cambio solo de importe (mismos meses, total distinto) NO cuenta.
+    """
+    meses_a = np.abs(a) > EPS_NUM
+    meses_h = np.abs(h) > EPS_NUM
+    if (meses_a != meses_h).any():
+        return True
+    if abs(a.sum() - h.sum()) <= EPS_NUM:
+        return bool((np.abs(a - h) > EPS_NUM).any())
+    return False
+
+
+def _mensual_por(df: pd.DataFrame, cols_mes: list[str], extra_keys: list[str]) -> dict:
+    """(llave_meta, *extra) -> vector de 12 meses sumado."""
+    if df.empty:
+        return {}
+    d = df.copy()
+    for c in cols_mes:
+        d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0.0) if c in d.columns else 0.0
+    g = d.groupby(["llave_meta"] + extra_keys)[cols_mes].sum()
+    return {k if isinstance(k, tuple) else (k,): v.to_numpy(dtype=float) for k, v in g.iterrows()}
+
+
+def _metas_con_cambio_partidas(pa: pd.DataFrame, ph: pd.DataFrame) -> set:
+    """Metas donde alguna partida (presente en ambos cortes) cambió su calendarización mensual."""
+    def _prep(df):
+        if df.empty or "Partida" not in df.columns:
+            return pd.DataFrame(columns=["llave_meta", "Partida_fmt"])
+        d = df.copy()
+        d["Partida_fmt"] = d["Partida"].apply(
+            lambda x: str(int(float(x)))[:4] if pd.notna(x) and str(x).strip() != "" else None
+        )
+        return d[d["Partida_fmt"].notna()]
+
+    va = _mensual_por(_prep(pa), MESES_MONTO, ["Partida_fmt"])
+    vh = _mensual_por(_prep(ph), MESES_MONTO, ["Partida_fmt"])
+    return {k[0] for k in va.keys() & vh.keys() if _distribucion_cambio(va[k], vh[k])}
+
+
+def _metas_con_cambio_cumplimiento(ca: pd.DataFrame, ch: pd.DataFrame) -> set:
+    """Metas cuya distribución mensual de cumplimiento cambió (se ignora la columna Cantidad)."""
+    va = _mensual_por(ca, MESES_CUMPLIMIENTO, [])
+    vh = _mensual_por(ch, MESES_CUMPLIMIENTO, [])
+    return {k[0] for k in va.keys() & vh.keys() if _distribucion_cambio(va[k], vh[k])}
+
+
+def construir_control_cambios_metas_info(
+    metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str,
+    crono_antes: pd.DataFrame | None = None, crono_ahora: pd.DataFrame | None = None,
+    partidas_antes: pd.DataFrame | None = None, partidas_ahora: pd.DataFrame | None = None,
+    cumpl_antes: pd.DataFrame | None = None, cumpl_ahora: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     A = _agregar_por_meta_simple(metas_antes, meta_key)
     H = _agregar_por_meta_simple(metas_ahora, meta_key)
 
@@ -195,15 +299,38 @@ def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora:
     c_mun_changed = _num_changed("Cantidad Municipal")
     m_mun_changed = _num_changed("Monto Municipal")
 
+    # --- Hojas secundarias ---
+    llaves_proyecto = set(df["llave_meta"].dropna())
+
+    cr_a, cr_h = _con_llave(crono_antes, meta_key), _con_llave(crono_ahora, meta_key)
+    if crono_antes is None and crono_ahora is None:
+        crono_set = set()
+    else:
+        fa, fh = _firma_cronograma(cr_a), _firma_cronograma(cr_h)
+        crono_set = {k for k in fa.keys() | fh.keys() if fa.get(k, frozenset()) != fh.get(k, frozenset())}
+
+    part_set = _metas_con_cambio_partidas(_con_llave(partidas_antes, meta_key), _con_llave(partidas_ahora, meta_key))
+
+    # Cumplimiento se carga sin filtrar por Clave Q: acotar a las metas del proyecto
+    cu_a, cu_h = _con_llave(cumpl_antes, meta_key), _con_llave(cumpl_ahora, meta_key)
+    cu_a = cu_a[cu_a["llave_meta"].isin(llaves_proyecto)]
+    cu_h = cu_h[cu_h["llave_meta"].isin(llaves_proyecto)]
+    cump_set = _metas_con_cambio_cumplimiento(cu_a, cu_h)
+
+    crono_changed = en_ambas & df["llave_meta"].isin(crono_set)
+    part_changed = en_ambas & df["llave_meta"].isin(part_set)
+    cump_changed = en_ambas & df["llave_meta"].isin(cump_set)
+
     estado = np.where(solo_ahora, "✚ Nueva",
               np.where(solo_antes, "✖ Eliminada",
               np.where(
                   desc_changed | um_changed | muni_changed | rp_changed |
-                  c_est_changed | m_est_changed | c_fed_changed | m_fed_changed | c_mun_changed | m_mun_changed,
+                  c_est_changed | m_est_changed | c_fed_changed | m_fed_changed | c_mun_changed | m_mun_changed |
+                  crono_changed | part_changed | cump_changed,
                   "✎ Modificada", "✔ Sin cambios"
               )))
 
-    id_visible = df["ID Meta_H"].fillna(df["ID Meta_A"])
+    id_visible = df["ID Meta_H"].fillna(df["ID Meta_A"]).apply(_fmt_id_meta)
     clave_meta_vis = df.get("Clave de Meta_H", pd.Series(dtype=object)).fillna(df.get("Clave de Meta_A", ""))
 
     montos_a = (
@@ -235,6 +362,9 @@ def construir_control_cambios_metas_info(metas_antes: pd.DataFrame, metas_ahora:
         "Mto. Fed.": mark(m_fed_changed | solo_ahora | solo_antes),
         "Cant. Mun.": mark(c_mun_changed | solo_ahora | solo_antes),
         "Mto. Mun.": mark(m_mun_changed | solo_ahora | solo_antes),
+        "Cronograma": mark(crono_changed),
+        "Calend. Partidas": mark(part_changed),
+        "Calend. Cumpl.": mark(cump_changed),
         "Δ total $": delta_total,
     })
 

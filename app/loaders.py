@@ -430,6 +430,14 @@ def cargar_beneficiarios_filtrado(ben_antes_file, ben_ahora_file, clave_q):
 
 
 @st.cache_data(show_spinner=False)
-def control_cambios_metas_cached(metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str) -> pd.DataFrame:
+def control_cambios_metas_cached(
+    metas_antes: pd.DataFrame, metas_ahora: pd.DataFrame, meta_key: str,
+    crono_antes: pd.DataFrame | None = None, crono_ahora: pd.DataFrame | None = None,
+    partidas_antes: pd.DataFrame | None = None, partidas_ahora: pd.DataFrame | None = None,
+    cumpl_antes: pd.DataFrame | None = None, cumpl_ahora: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """Wrapper cacheado de construir_control_cambios_metas_info."""
-    return construir_control_cambios_metas_info(metas_antes, metas_ahora, meta_key)
+    return construir_control_cambios_metas_info(
+        metas_antes, metas_ahora, meta_key,
+        crono_antes, crono_ahora, partidas_antes, partidas_ahora, cumpl_antes, cumpl_ahora,
+    )

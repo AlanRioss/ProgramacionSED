@@ -54,6 +54,9 @@ def _render_resumen_cambios(tabla_cc: pd.DataFrame, meta_key: str) -> None:
         "Mto. Fed.":  "Monto federal",
         "Cant. Mun.": "Cantidad municipal",
         "Mto. Mun.":  "Monto municipal",
+        "Cronograma":       "Cronograma",
+        "Calend. Partidas": "Calendarización de partidas",
+        "Calend. Cumpl.":   "Calendarización de cumplimiento",
     }
 
     n_nuevas      = int((tabla_cc["Estado"] == "✚ Nueva").sum())
@@ -156,7 +159,10 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
     # ========== Resumen de cambios ==========
     st.markdown("#### 📊 Resumen de cambios – Metas")
     st.caption("Comparativo a nivel proyecto (corte Antes vs Ahora).")
-    tabla_cc = control_cambios_metas_cached(metas_antes, metas_ahora, META_COL)
+    tabla_cc = control_cambios_metas_cached(
+        metas_antes, metas_ahora, META_COL,
+        crono_antes, crono_ahora, partidas_antes, partidas_ahora, cumpl_antes, cumpl_ahora,
+    )
     _render_resumen_cambios(tabla_cc, META_COL)
     st.markdown("---")
 
