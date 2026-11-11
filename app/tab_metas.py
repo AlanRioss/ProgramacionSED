@@ -505,7 +505,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         st.write("**Selecciona una meta para visualizar su calendarizado (Por default se muestra del proyecto completo)**")
 
-        with st.expander("⚙️ Configuración de Partidas", expanded=False):
+        with st.expander("⚙️ Filtros Partidas", expanded=False):
             st.markdown("**Partidas a mostrar**")
             col1, col2 = st.columns([3, 1])
             todas_on = col2.checkbox(
