@@ -675,6 +675,9 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         _tabla_ordenada = _tabla_unica.sort_values(sort_col, ascending=asc, kind="stable").copy()
 
+        _cols_monto = ["Monto Anual (Antes)", "Monto Anual (Ahora)", "Diferencia"]
+        _totales = {c: float(_tabla_ordenada[c].sum()) for c in _cols_monto}
+
         if modo_interactivo:
             def _strip_html(x):
                 return re.sub(r"<.*?>", "", str(x)) if isinstance(x, str) else x
@@ -697,9 +700,30 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     "Diferencia": st.column_config.NumberColumn(format="%,.2f"),
                 },
             )
+            # En modo interactivo la fila de total se movería al ordenar: se muestra aparte
+            st.markdown(
+                f"<div style='background:#d9ead3; font-weight:bold; padding:6px 10px; border-radius:4px'>"
+                f"TOTAL &nbsp;·&nbsp; Antes: ${_totales['Monto Anual (Antes)']:,.2f} &nbsp;·&nbsp; "
+                f"Ahora: ${_totales['Monto Anual (Ahora)']:,.2f} &nbsp;·&nbsp; "
+                f"Diferencia: ${_totales['Diferencia']:,.2f}</div>",
+                unsafe_allow_html=True,
+            )
         else:
+            _fila_total = {c: "" for c in _tabla_ordenada.columns}
+            _fila_total[_tabla_ordenada.columns[0]] = "TOTAL"
+            _fila_total.update(_totales)
+            _tabla_con_total = pd.concat(
+                [_tabla_ordenada, pd.DataFrame([_fila_total], index=["__total__"])]
+            )
+
+            def _estilo_fila_total(df: pd.DataFrame):
+                styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                if "__total__" in df.index:
+                    styles.loc["__total__", :] = "font-weight:bold; background-color:#d9ead3"
+                return styles
+
             styled_unica = (
-                _tabla_ordenada
+                _tabla_con_total
                 .style
                 .format({
                     "Monto Anual (Antes)": "${:,.2f}",
@@ -707,6 +731,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     "Diferencia": "${:,.2f}",
                 })
                 .applymap(_bg_delta_cell, subset=["Diferencia"])
+                .apply(_estilo_fila_total, axis=None)
                 .hide(axis="index")
             )
             st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
