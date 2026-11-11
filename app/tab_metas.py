@@ -505,7 +505,7 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         st.write("**Selecciona una meta para visualizar su calendarizado (Por default se muestra del proyecto completo)**")
 
-        with st.expander("⚙️ Configuración de Partidas", expanded=False):
+        with st.expander("⚙️ Filtros Partidas", expanded=False):
             st.markdown("**Partidas a mostrar**")
             col1, col2 = st.columns([3, 1])
             todas_on = col2.checkbox(
@@ -557,74 +557,12 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         st.caption(f"Mostrando {len(filtro_partidas)} de {len(partidas_disponibles)} partidas disponibles.")
 
-        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
-        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
-
-        meses_cols = [
-            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
-            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
-            "Monto Octubre", "Monto Noviembre", "Monto Diciembre",
-        ]
-
-        sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
-        sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
-
-        df_mensual_sel = pd.DataFrame({
-            "Mes": [m.replace("Monto ", "") for m in meses_cols],
-            "Antes": sum_m_antes.values,
-            "Ahora": sum_m_ahora.values,
-        })
-
-        def _humanize_kmb(x):
-            if pd.isna(x):
-                return ""
-            try:
-                v = float(x)
-            except Exception:
-                return ""
-            if v == 0:
-                return ""
-            a = abs(v)
-            if a >= 1_000_000_000:
-                return f"${v/1_000_000_000:.2f}B"
-            if a >= 1_000_000:
-                return f"${v/1_000_000:.2f}M"
-            if a >= 1_000:
-                return f"${v/1_000:.0f}K"
-            return f"${v:,.0f}"
-
-        labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
-
-        titulo_scope = (
-            f"Meta ({META_COL}) {id_meta_sel}"
-            if id_meta_sel else "Proyecto completo"
-        )
-
-        fig_mes = px.bar(
-            df_mensual_sel,
-            x="Mes",
-            y=["Antes", "Ahora"],
-            barmode="group",
-            title=f"Calendarizado Mensual – {titulo_scope}",
-            labels={"value": "Monto", "variable": "Versión"},
-            color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
-        )
-
-        def _apply_text_to_ahora(trace):
-            if trace.name == "Ahora":
-                trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
-            else:
-                trace.update(text=None)
-
-        fig_mes.for_each_trace(_apply_text_to_ahora)
-        fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
-        st.plotly_chart(fig_mes, use_container_width=True)
 
         # ====== Partidas por Actividad / Hito ======
         st.markdown("##### Partidas por Actividad ")
 
-        _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
-        _det_h = dfp_h[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+        _det_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)][["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+        _det_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)][["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
 
         _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
         _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
@@ -737,6 +675,9 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         _tabla_ordenada = _tabla_unica.sort_values(sort_col, ascending=asc, kind="stable").copy()
 
+        _cols_monto = ["Monto Anual (Antes)", "Monto Anual (Ahora)", "Diferencia"]
+        _totales = {c: float(_tabla_ordenada[c].sum()) for c in _cols_monto}
+
         if modo_interactivo:
             def _strip_html(x):
                 return re.sub(r"<.*?>", "", str(x)) if isinstance(x, str) else x
@@ -759,9 +700,30 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     "Diferencia": st.column_config.NumberColumn(format="%,.2f"),
                 },
             )
+            # En modo interactivo la fila de total se movería al ordenar: se muestra aparte
+            st.markdown(
+                f"<div style='background:#d9ead3; font-weight:bold; padding:6px 10px; border-radius:4px'>"
+                f"TOTAL &nbsp;·&nbsp; Antes: ${_totales['Monto Anual (Antes)']:,.2f} &nbsp;·&nbsp; "
+                f"Ahora: ${_totales['Monto Anual (Ahora)']:,.2f} &nbsp;·&nbsp; "
+                f"Diferencia: ${_totales['Diferencia']:,.2f}</div>",
+                unsafe_allow_html=True,
+            )
         else:
+            _fila_total = {c: "" for c in _tabla_ordenada.columns}
+            _fila_total[_tabla_ordenada.columns[0]] = "TOTAL"
+            _fila_total.update(_totales)
+            _tabla_con_total = pd.concat(
+                [_tabla_ordenada, pd.DataFrame([_fila_total], index=["__total__"])]
+            )
+
+            def _estilo_fila_total(df: pd.DataFrame):
+                styles = pd.DataFrame("", index=df.index, columns=df.columns)
+                if "__total__" in df.index:
+                    styles.loc["__total__", :] = "font-weight:bold; background-color:#d9ead3"
+                return styles
+
             styled_unica = (
-                _tabla_ordenada
+                _tabla_con_total
                 .style
                 .format({
                     "Monto Anual (Antes)": "${:,.2f}",
@@ -769,9 +731,74 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                     "Diferencia": "${:,.2f}",
                 })
                 .applymap(_bg_delta_cell, subset=["Diferencia"])
+                .apply(_estilo_fila_total, axis=None)
                 .hide(axis="index")
             )
             st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
+
+        # ====== Calendarizado mensual (gráfica) ======
+        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
+        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
+
+        meses_cols = [
+            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
+            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
+            "Monto Octubre", "Monto Noviembre", "Monto Diciembre",
+        ]
+
+        sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
+        sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
+
+        df_mensual_sel = pd.DataFrame({
+            "Mes": [m.replace("Monto ", "") for m in meses_cols],
+            "Antes": sum_m_antes.values,
+            "Ahora": sum_m_ahora.values,
+        })
+
+        def _humanize_kmb(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return ""
+            if v == 0:
+                return ""
+            a = abs(v)
+            if a >= 1_000_000_000:
+                return f"${v/1_000_000_000:.2f}B"
+            if a >= 1_000_000:
+                return f"${v/1_000_000:.2f}M"
+            if a >= 1_000:
+                return f"${v/1_000:.0f}K"
+            return f"${v:,.0f}"
+
+        labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
+
+        titulo_scope = (
+            f"Meta ({META_COL}) {id_meta_sel}"
+            if id_meta_sel else "Proyecto completo"
+        )
+
+        fig_mes = px.bar(
+            df_mensual_sel,
+            x="Mes",
+            y=["Antes", "Ahora"],
+            barmode="group",
+            title=f"Calendarizado Mensual – {titulo_scope}",
+            labels={"value": "Monto", "variable": "Versión"},
+            color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
+        )
+
+        def _apply_text_to_ahora(trace):
+            if trace.name == "Ahora":
+                trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
+            else:
+                trace.update(text=None)
+
+        fig_mes.for_each_trace(_apply_text_to_ahora)
+        fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
+        st.plotly_chart(fig_mes, use_container_width=True)
 
         # ---------- Cronograma ----------
         if not id_meta_sel:
