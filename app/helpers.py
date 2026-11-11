@@ -52,6 +52,18 @@ def _fmt_id_meta(x):
     return str(x)
 
 
+def _fmt_delta_monto(x: float) -> str:
+    """Delta de monto para st.metric con el signo ANTES del '$' (-$1,000.00 / +$1,000.00).
+
+    st.metric decide flecha y color según si el texto empieza con '-'; con '$-1,000.00'
+    una disminución se mostraba como aumento (flecha verde hacia arriba).
+    """
+    x = float(x or 0.0)
+    if abs(x) < 0.005:
+        return "$0.00"
+    return f"{'-' if x < 0 else '+'}${abs(x):,.2f}"
+
+
 def _fmt_meta_val(meta_col: str, x):
     """Formatea valor de meta según la llave (ID Meta o Clave de Meta)."""
     return _fmt_id_meta(x) if meta_col == "ID Meta" else ("" if pd.isna(x) else str(x))

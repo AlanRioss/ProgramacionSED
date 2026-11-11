@@ -15,7 +15,7 @@ from manual_extractos import MANUAL
 from catalogo_partidas import CATALOGO_PARTIDAS
 
 from helpers import (
-    _fmt_id_meta, _fmt_meta_val, _diff_html, _norm_meta_val, _norm_txt,
+    _fmt_id_meta, _fmt_meta_val, _diff_html, _norm_meta_val, _norm_txt, _fmt_delta_monto,
 )
 from loaders import (
     _info_meta, _resumen_municipal, _partidas_resumen,
@@ -279,7 +279,11 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
             col_total1, col_total2 = st.columns(2)
             col_total1.metric("Cantidad Total (Ahora)", f"{total_ahora_cantidad:,.2f}", delta=f"{dif_cant:,.2f}")
-            col_total2.metric("Monto Total (Ahora)", f"${total_ahora_monto:,.2f}", delta=f"${dif_monto:,.2f}")
+            col_total2.metric(
+                "Monto Total (Ahora)", f"${total_ahora_monto:,.2f}",
+                delta=_fmt_delta_monto(dif_monto),
+                delta_color="normal" if abs(dif_monto) >= 0.005 else "off",
+            )
 
             st.markdown("---")
             header_with_tooltip_distribucion()

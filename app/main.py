@@ -13,7 +13,7 @@ import pandas as pd
 import html
 
 from helpers import (
-    _first_nonempty, _diff_html, _fmt_id_meta,
+    _first_nonempty, _diff_html, _fmt_id_meta, _fmt_delta_monto,
 )
 from loaders import (
     COLUMNAS_DATOS_GENERALES,
@@ -187,8 +187,8 @@ col_proy1.metric("Monto Total (Antes)", f"${monto_total_antes:,.2f}")
 col_proy2.metric(
     "Monto Total (Ahora)",
     f"${monto_total_ahora:,.2f}",
-    delta=f"${diferencia_monto_total:,.2f}",
-    delta_color="normal",
+    delta=_fmt_delta_monto(diferencia_monto_total),
+    delta_color="normal" if abs(diferencia_monto_total) >= 0.005 else "off",
 )
 
 st.markdown("---")
