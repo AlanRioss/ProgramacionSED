@@ -557,74 +557,12 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
 
         st.caption(f"Mostrando {len(filtro_partidas)} de {len(partidas_disponibles)} partidas disponibles.")
 
-        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
-        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
-
-        meses_cols = [
-            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
-            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
-            "Monto Octubre", "Monto Noviembre", "Monto Diciembre",
-        ]
-
-        sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
-        sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
-
-        df_mensual_sel = pd.DataFrame({
-            "Mes": [m.replace("Monto ", "") for m in meses_cols],
-            "Antes": sum_m_antes.values,
-            "Ahora": sum_m_ahora.values,
-        })
-
-        def _humanize_kmb(x):
-            if pd.isna(x):
-                return ""
-            try:
-                v = float(x)
-            except Exception:
-                return ""
-            if v == 0:
-                return ""
-            a = abs(v)
-            if a >= 1_000_000_000:
-                return f"${v/1_000_000_000:.2f}B"
-            if a >= 1_000_000:
-                return f"${v/1_000_000:.2f}M"
-            if a >= 1_000:
-                return f"${v/1_000:.0f}K"
-            return f"${v:,.0f}"
-
-        labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
-
-        titulo_scope = (
-            f"Meta ({META_COL}) {id_meta_sel}"
-            if id_meta_sel else "Proyecto completo"
-        )
-
-        fig_mes = px.bar(
-            df_mensual_sel,
-            x="Mes",
-            y=["Antes", "Ahora"],
-            barmode="group",
-            title=f"Calendarizado Mensual – {titulo_scope}",
-            labels={"value": "Monto", "variable": "Versión"},
-            color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
-        )
-
-        def _apply_text_to_ahora(trace):
-            if trace.name == "Ahora":
-                trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
-            else:
-                trace.update(text=None)
-
-        fig_mes.for_each_trace(_apply_text_to_ahora)
-        fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
-        st.plotly_chart(fig_mes, use_container_width=True)
 
         # ====== Partidas por Actividad / Hito ======
         st.markdown("##### Partidas por Actividad ")
 
-        _det_a = dfp_a[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
-        _det_h = dfp_h[["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+        _det_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)][["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
+        _det_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)][["Partida_fmt", "Clave de Actividad /Hito", META_COL, "Descripción", "Monto Anual"]].copy()
 
         _det_a.rename(columns={"Descripción": "Desc_A", "Monto Anual": "Monto Anual (Antes)"}, inplace=True)
         _det_h.rename(columns={"Descripción": "Desc_H", "Monto Anual": "Monto Anual (Ahora)"}, inplace=True)
@@ -772,6 +710,70 @@ def _metas_body(metas_antes, metas_ahora, crono_antes, crono_ahora,
                 .hide(axis="index")
             )
             st.markdown(styled_unica.to_html(escape=False), unsafe_allow_html=True)
+
+        # ====== Calendarizado mensual (gráfica) ======
+        df_mes_a = dfp_a[dfp_a["Partida_fmt"].astype(str).isin(filtro_partidas)]
+        df_mes_h = dfp_h[dfp_h["Partida_fmt"].astype(str).isin(filtro_partidas)]
+
+        meses_cols = [
+            "Monto Enero", "Monto Febrero", "Monto Marzo", "Monto Abril", "Monto Mayo",
+            "Monto Junio", "Monto Julio", "Monto Agosto", "Monto Septiembre",
+            "Monto Octubre", "Monto Noviembre", "Monto Diciembre",
+        ]
+
+        sum_m_ahora = df_mes_h[meses_cols].sum(numeric_only=True)
+        sum_m_antes = df_mes_a[meses_cols].sum(numeric_only=True)
+
+        df_mensual_sel = pd.DataFrame({
+            "Mes": [m.replace("Monto ", "") for m in meses_cols],
+            "Antes": sum_m_antes.values,
+            "Ahora": sum_m_ahora.values,
+        })
+
+        def _humanize_kmb(x):
+            if pd.isna(x):
+                return ""
+            try:
+                v = float(x)
+            except Exception:
+                return ""
+            if v == 0:
+                return ""
+            a = abs(v)
+            if a >= 1_000_000_000:
+                return f"${v/1_000_000_000:.2f}B"
+            if a >= 1_000_000:
+                return f"${v/1_000_000:.2f}M"
+            if a >= 1_000:
+                return f"${v/1_000:.0f}K"
+            return f"${v:,.0f}"
+
+        labels_ahora = [_humanize_kmb(v) for v in df_mensual_sel["Ahora"].values]
+
+        titulo_scope = (
+            f"Meta ({META_COL}) {id_meta_sel}"
+            if id_meta_sel else "Proyecto completo"
+        )
+
+        fig_mes = px.bar(
+            df_mensual_sel,
+            x="Mes",
+            y=["Antes", "Ahora"],
+            barmode="group",
+            title=f"Calendarizado Mensual – {titulo_scope}",
+            labels={"value": "Monto", "variable": "Versión"},
+            color_discrete_map={"Antes": "steelblue", "Ahora": "seagreen"},
+        )
+
+        def _apply_text_to_ahora(trace):
+            if trace.name == "Ahora":
+                trace.update(text=labels_ahora, texttemplate="%{text}", textposition="outside", textfont_size=11)
+            else:
+                trace.update(text=None)
+
+        fig_mes.for_each_trace(_apply_text_to_ahora)
+        fig_mes.update_layout(height=480, uniformtext_minsize=10, uniformtext_mode="hide")
+        st.plotly_chart(fig_mes, use_container_width=True)
 
         # ---------- Cronograma ----------
         if not id_meta_sel:
